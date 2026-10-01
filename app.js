@@ -10,7 +10,7 @@ const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPAB
   }
 }) : null;
 
-const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null, calendarView:(window.innerWidth<760?'agenda':'month'), trainingDocs:[] };
+const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null, calendarView:(window.innerWidth<760?'agenda':'month'), trainingDocs:[], parentPlayerId:null, messageChannel:null };
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -38,39 +38,62 @@ const NAV_COACH = [
   ['traininghub','📋','Entraînements'],
   ['players','👥','Joueurs'],
   ['evaluations','★','Évaluations'],
+  ['messages','💬','Messages'],
   ['settings','⚙','Paramètres']
+];
+const NAV_PARENT = [
+  ['dashboard','⌂','Accueil'],
+  ['attendance','✓','Présences'],
+  ['contact','💬','Contacter les coachs'],
+  ['settings','⚙','Mon accès']
 ];
 const isCoach = () => state.membership?.role === 'coach';
 
 function setView(which){ ['authView','appView'].forEach(id=>$('#'+id)?.classList.add('hidden')); $('#'+which)?.classList.remove('hidden'); }
 function pageMeta(page){
-  const m={
+  const coach={
     dashboard:['Tableau de bord','Vue d’ensemble de l’équipe'],
-    calendar:['Calendrier','Entraînements, matchs et tournois'],
+    calendar:['Calendrier','Entraînements, matchs et événements du club'],
     attendance:['Présences','Prévisions parents et présence réelle'],
     matches:['Matchs','Championnat, amicaux, compositions et visuels'],
     traininghub:['Entraînements','Programme, thèmes et fichiers de séance'],
     players:['Joueurs','Effectif U10'],
     evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],
+    messages:['Messages','Conversations privées avec les parents'],
     settings:['Paramètres','Compte et accès à l’équipe']
   };
-  return m[page]||m.dashboard;
+  const parent={
+    dashboard:['Accueil','Calendrier et événements U10'],
+    attendance:['Présences','Disponibilités de votre enfant'],
+    contact:['Contacter les coachs','Conversation privée avec le staff U10'],
+    settings:['Mon accès','Accès parent et notifications']
+  };
+  return (isCoach()?coach:parent)[page] || (isCoach()?coach.dashboard:parent.dashboard);
 }
-function renderNav(){ const nav=NAV_COACH; $('#nav').innerHTML=nav.map(([id,ic,lab])=>`<button class="nav-btn ${state.page===id?'active':''}" data-page="${id}"><span class="nav-icon">${ic}</span>${lab}</button>`).join(''); $$('#nav .nav-btn').forEach(b=>b.onclick=()=>go(b.dataset.page)); }
+function renderNav(){
+  const nav=isCoach()?NAV_COACH:NAV_PARENT;
+  $('#nav').innerHTML=nav.map(([id,ic,lab])=>`<button class="nav-btn ${state.page===id?'active':''}" data-page="${id}"><span class="nav-icon">${ic}</span>${lab}</button>`).join('');
+  $$('#nav .nav-btn').forEach(b=>b.onclick=()=>go(b.dataset.page));
+}
 async function go(page){
+  const allowed=(isCoach()?NAV_COACH:NAV_PARENT).map(x=>x[0]);
+  if(!allowed.includes(page)) page='dashboard';
   state.page=page;
   renderNav();
   const [t,s]=pageMeta(page);
   $('#pageTitle').textContent=t;
   $('#pageSubtitle').textContent=s;
   $('#sidebar').classList.remove('open');
-  if(page==='dashboard') await renderDashboard();
-  if(page==='calendar') await renderCalendar();
-  if(page==='attendance') await renderAttendance();
-  if(page==='matches') await renderMatches();
-  if(page==='traininghub') await renderTrainingHub();
-  if(page==='players') await renderPlayers();
-  if(page==='evaluations') await renderEvaluations();
+
+  if(page==='dashboard') await (isCoach()?renderDashboard():renderParentHome());
+  if(page==='calendar' && isCoach()) await renderCalendar();
+  if(page==='attendance') await (isCoach()?renderAttendance():renderParentAttendance());
+  if(page==='matches' && isCoach()) await renderMatches();
+  if(page==='traininghub' && isCoach()) await renderTrainingHub();
+  if(page==='players' && isCoach()) await renderPlayers();
+  if(page==='evaluations' && isCoach()) await renderEvaluations();
+  if(page==='messages' && isCoach()) await renderCoachMessages();
+  if(page==='contact' && !isCoach()) await renderParentContact();
   if(page==='settings') await renderSettings();
 }
 
@@ -137,7 +160,7 @@ async function loadUser(user){
 
   const {data:identity,error:identityError}=await sb
     .from('app_identities')
-    .select('identity_key,display_name,identity_type,auth_user_id')
+    .select('identity_key,display_name,identity_type,auth_user_id,player_id')
     .eq('auth_user_id',user.id)
     .maybeSingle();
 
@@ -150,6 +173,7 @@ async function loadUser(user){
     state.profile=null;
     state.membership=null;
     state.team=null;
+    state.parentPlayerId=null;
     setView('authView');
     resetLoginForm();
     return;
@@ -161,26 +185,30 @@ async function loadUser(user){
     .from('team_members')
     .select('team_id,role,teams(*)')
     .eq('user_id',user.id)
-    .eq('role','coach')
     .limit(1);
 
   if(error) console.error(error);
   if(!memberships?.length){
     setView('authView');
     resetLoginForm();
-    toast("L'accès coach n'est pas encore activé pour ce profil.", false);
+    toast("L'accès n'est pas encore activé pour ce profil.", false);
     return;
   }
 
   state.membership=memberships[0];
   state.team=memberships[0].teams;
-  state.profile={id:user.id,full_name:identity.display_name,role:'coach'};
+  state.parentPlayerId=identity.identity_type==='player'?identity.player_id:null;
+  state.profile={id:user.id,full_name:identity.display_name,role:memberships[0].role};
 
   $('#seasonLabel').textContent=state.team.season||'';
-  $('#userCard').innerHTML=`<strong>${esc(identity.display_name)}</strong><br><span class="muted">Coach</span>`;
+  $('#userCard').innerHTML=`<strong>${esc(identity.display_name)}</strong><br><span class="muted">${isCoach()?'Coach':'Parent'}</span>`;
   setView('appView');
-  renderNav();
   await loadCore();
+
+  // Les parents arrivent toujours sur l'accueil. Les coachs gardent leur page si elle est autorisée.
+  state.page=isCoach() ? (NAV_COACH.some(x=>x[0]===state.page)?state.page:'dashboard') : 'dashboard';
+  renderNav();
+  setupMessageRealtime();
   await go(state.page);
 }
 
@@ -225,7 +253,6 @@ async function prepareIdentityLogin(){
 
   if(key.startsWith('player-')){
     $('#parentPending').classList.remove('hidden');
-    return;
   }
 
   try{
@@ -260,14 +287,14 @@ async function prepareIdentityLogin(){
 
 function applyIdentityStatus(data){
   if(!data?.exists){
-    return toast("Ce profil coach n'existe pas dans Supabase. Exécute SETUP_COACH.sql.", false);
+    return toast("Ce profil n’existe pas encore dans Supabase. Exécute UPGRADE_PARENTS_MESSAGES_V10.sql.", false);
   }
 
   state.loginMode = data.has_pin ? 'login' : 'activate';
   $('#pinArea').classList.remove('hidden');
 
   if(state.loginMode==='activate'){
-    $('#pinHelp').textContent="Première connexion : choisissez votre code personnel à 6 chiffres. Vous ne devrez le créer qu'une seule fois.";
+    $('#pinHelp').textContent="Première connexion : choisissez votre code personnel à 6 chiffres. Il servira pour vos prochaines connexions.";
     $('#pinConfirmLabel').classList.remove('hidden');
     $('#pinConfirm').required=true;
     $('#identitySubmit').textContent='Créer mon accès coach';
@@ -283,7 +310,7 @@ $('#identitySelect').addEventListener('change',prepareIdentityLogin);
 $('#identityForm').addEventListener('submit',async e=>{
   e.preventDefault();
   const key=$('#identitySelect').value;
-  if(!COACH_KEYS.has(key)) return toast("L'accès parent sera ajouté ensuite.",false);
+  if(!key) return toast("Choisissez d'abord un profil.",false);
 
   const pin=$('#pinInput').value.trim();
   if(!/^\d{6}$/.test(pin)) return toast('Le code doit contenir exactement 6 chiffres.',false);
@@ -309,7 +336,7 @@ $('#identityForm').addEventListener('submit',async e=>{
   setBusy(btn,false);
   if(error) return toast(error.message,false);
 
-  toast(state.loginMode==='activate'?'Accès coach créé.':'Connexion réussie.');
+  toast(state.loginMode==='activate'?'Accès créé.':'Connexion réussie.');
   await loadUser(state.user);
 });
 
@@ -325,8 +352,340 @@ $('#logoutBtn').onclick=async()=>{
 };
 $('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
 
-function eventTypePill(type){ const x={training:['green','Entraînement'],match:['blue','Match'],tournament:['orange','Tournoi'],other:['gray','Autre']}[type]||['gray',type]; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
+function eventTypePill(type){ const x={training:['green','Entraînement'],match:['blue','Match'],tournament:['orange','Tournoi'],other:['gray','Événement du club']}[type]||['gray',type]; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
 function statusPill(s){ const m={present:['green','Présent'],absent:['red','Absent'],maybe:['orange','Incertain'],excused:['orange','Excusé'],late:['orange','Retard']}; const x=m[s]||['gray','Pas de réponse']; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
+
+function parentWeekMonday(){
+  const now=new Date();
+  const day=now.getDay(); // 0 = dimanche
+  const d=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const offset=day===0?1:1-day;
+  d.setDate(d.getDate()+offset);
+  return d;
+}
+
+function parentEventCard(e){
+  const when=timeShort(e.start_time)||'Heure à préciser';
+  const type=eventTypePill(e.type);
+  return `<div class="event-card parent-event-card">
+    <div class="event-title"><h4>${esc(e.title)}</h4>${type}</div>
+    <div class="event-meta">
+      <span>📅 ${fmtFullDate(e.event_date)}</span>
+      <span>🕒 ${when}</span>
+      ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
+      ${e.opponent?`<span>⚽ ${esc(e.opponent)}</span>`:''}
+      ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
+    </div>
+    ${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}
+  </div>`;
+}
+
+async function renderParentHome(){
+  await loadCore();
+  const now=new Date();
+  const y=now.getFullYear(),m=now.getMonth();
+  const monthEvents=state.events.filter(e=>{
+    const d=new Date(e.event_date+'T12:00:00');
+    return d.getFullYear()===y&&d.getMonth()===m;
+  }).sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  const upcoming=state.events.filter(e=>e.event_date>=todayISO()).slice(0,4);
+  const child=state.players.find(p=>p.id===state.parentPlayerId);
+
+  $('#content').innerHTML=`
+    <div class="parent-welcome">
+      <div><small>ACCÈS PARENT</small><h2>${esc(child?.first_name||state.identity?.display_name||'U10 Herseaux')}</h2>
+      <p>Retrouvez les prochains rendez-vous et indiquez les présences directement dans l'application.</p></div>
+      <button class="btn primary" id="homePresence">Remplir les présences</button>
+    </div>
+
+    <div class="section-head"><div><h3>Prochains rendez-vous</h3><span class="muted">${new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(now)}</span></div></div>
+    <div class="event-list">${upcoming.length?upcoming.map(parentEventCard).join(''):'<div class="empty panel">Aucun événement à venir.</div>'}</div>
+
+    <div class="section-head"><div><h3>Calendrier du mois</h3><span class="muted">Touchez les présences pour répondre aux événements.</span></div></div>
+    ${agendaCalendarHTML(monthEvents)}
+
+    <div class="parent-contact-cta">
+      <div><strong>Une information privée concernant ${esc(child?.first_name||'votre enfant')} ?</strong>
+      <span>Écrivez directement aux trois coachs.</span></div>
+      <button class="btn secondary" id="homeContact">Contacter les coachs</button>
+    </div>`;
+
+  $('#homePresence').onclick=()=>go('attendance');
+  $('#homeContact').onclick=()=>go('contact');
+  $$('[data-cal-event]').forEach(b=>b.onclick=()=>{go('attendance')});
+}
+
+async function renderParentAttendance(){
+  await loadCore();
+  const pid=state.parentPlayerId;
+  const child=state.players.find(p=>p.id===pid);
+  if(!pid){
+    $('#content').innerHTML='<div class="notice warning">Aucun enfant n’est lié à cet accès.</div>';
+    return;
+  }
+
+  let monday=state.parentWeek ? mondayOf(state.parentWeek) : parentWeekMonday();
+  state.parentWeek=isoLocal(monday);
+  const sunday=addDays(monday,6);
+  const start=isoLocal(monday), end=isoLocal(sunday);
+
+  const events=state.events.filter(e=>e.event_date>=start&&e.event_date<=end)
+    .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  let avail=[];
+  if(events.length){
+    const {data,error}=await sb.from('availability').select('*')
+      .eq('player_id',pid)
+      .in('event_id',events.map(e=>e.id));
+    if(error) toast(error.message,false);
+    avail=data||[];
+  }
+  const amap=new Map(avail.map(x=>[x.event_id,x]));
+
+  $('#content').innerHTML=`
+    <div class="panel parent-week-head">
+      <button class="btn ghost small" id="parentPrevWeek">←</button>
+      <div><small>SEMAINE</small><strong>${fmtFullDate(start)} → ${fmtFullDate(end)}</strong></div>
+      <button class="btn ghost small" id="parentNextWeek">→</button>
+    </div>
+
+    <div class="notice"><strong>${esc(child?.first_name||'Votre enfant')}</strong> · indiquez Présent ou Absent pour chaque événement de la semaine.</div>
+
+    <div class="parent-presence-list">
+      ${events.length?events.map(e=>{
+        const a=amap.get(e.id);
+        return `<div class="parent-presence-card">
+          <div class="parent-presence-info">
+            <div class="event-title"><h4>${esc(e.title)}</h4>${eventTypePill(e.type)}</div>
+            <div class="event-meta">
+              <span>📅 ${fmtFullDate(e.event_date)}</span>
+              <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
+              ${e.opponent?`<span>⚽ ${esc(e.opponent)}</span>`:''}
+              ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
+            </div>
+          </div>
+          <div class="parent-choice" data-parent-event="${e.id}">
+            <button class="parent-choice-btn present ${a?.status==='present'?'selected':''}" data-status="present">✓ Présent</button>
+            <button class="parent-choice-btn absent ${a?.status==='absent'?'selected':''}" data-status="absent">✕ Absent</button>
+          </div>
+          <input class="parent-presence-comment" data-parent-comment="${e.id}" value="${esc(a?.comment||'')}" placeholder="Remarque éventuelle / raison d'absence" />
+        </div>`;
+      }).join(''):'<div class="empty panel">Aucun événement prévu cette semaine.</div>'}
+    </div>`;
+
+  $('#parentPrevWeek').onclick=()=>{state.parentWeek=isoLocal(addDays(monday,-7));renderParentAttendance()};
+  $('#parentNextWeek').onclick=()=>{state.parentWeek=isoLocal(addDays(monday,7));renderParentAttendance()};
+
+  $$('[data-parent-event] .parent-choice-btn').forEach(b=>b.onclick=async()=>{
+    const wrap=b.closest('[data-parent-event]');
+    const eventId=wrap.dataset.parentEvent;
+    const status=b.dataset.status;
+    const comment=$(`[data-parent-comment="${eventId}"]`)?.value.trim()||null;
+    $$('button',wrap).forEach(x=>x.classList.remove('selected'));
+    b.classList.add('selected');
+    const {error}=await sb.from('availability').upsert({
+      event_id:eventId,player_id:pid,status,comment,set_by:state.user.id,updated_at:new Date().toISOString()
+    },{onConflict:'event_id,player_id'});
+    if(error){
+      b.classList.remove('selected');
+      return toast(error.message,false);
+    }
+    toast(status==='present'?'Présence enregistrée':'Absence enregistrée');
+  });
+
+  $$('.parent-presence-comment').forEach(inp=>inp.onchange=async()=>{
+    const eventId=inp.dataset.parentComment;
+    const current=amap.get(eventId);
+    const selected=$(`[data-parent-event="${eventId}"] .parent-choice-btn.selected`);
+    const status=selected?.dataset.status||current?.status;
+    if(!status)return;
+    const {error}=await sb.from('availability').upsert({
+      event_id:eventId,player_id:pid,status,comment:inp.value.trim()||null,set_by:state.user.id,updated_at:new Date().toISOString()
+    },{onConflict:'event_id,player_id'});
+    if(error)return toast(error.message,false);
+    toast('Remarque enregistrée');
+  });
+}
+
+async function getOrCreateConversation(){
+  const pid=state.parentPlayerId;
+  if(!pid)return null;
+  let {data,error}=await sb.from('conversations').select('*').eq('player_id',pid).maybeSingle();
+  if(error)return toast(error.message,false),null;
+  if(data)return data;
+  const created=await sb.from('conversations').insert({team_id:state.team.id,player_id:pid}).select().single();
+  if(created.error)return toast(created.error.message,false),null;
+  return created.data;
+}
+
+function messageBubble(m){
+  const mine=m.sender_user_id===state.user.id;
+  const sender=m.sender_role==='coach'?(m.sender_name||'Coach'):'Parent';
+  const dt=new Date(m.created_at);
+  const time=new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(dt);
+  return `<div class="chat-row ${mine?'mine':'theirs'}">
+    <div class="chat-bubble">
+      ${!mine?`<small>${esc(sender)}</small>`:''}
+      <div>${esc(m.body).replace(/\n/g,'<br>')}</div>
+      <time>${time}</time>
+    </div>
+  </div>`;
+}
+
+async function loadConversationMessages(conversationId){
+  const {data,error}=await sb.from('messages').select('*').eq('conversation_id',conversationId).order('created_at');
+  if(error){toast(error.message,false);return []}
+  return data||[];
+}
+
+async function renderParentContact(){
+  const conv=await getOrCreateConversation();
+  if(!conv){
+    $('#content').innerHTML='<div class="notice warning">Impossible d’ouvrir la conversation.</div>';
+    return;
+  }
+  const messages=await loadConversationMessages(conv.id);
+  const child=state.players.find(p=>p.id===state.parentPlayerId);
+
+  $('#content').innerHTML=`
+    <div class="chat-shell">
+      <div class="chat-header">
+        <div class="coach-avatars"><span>N</span><span>T</span><span>M</span></div>
+        <div><strong>Coachs U10 Herseaux</strong><small>Conversation privée concernant ${esc(child?.first_name||'votre enfant')}</small></div>
+        <button class="btn ghost small" id="enableNotifications">🔔 Notifications</button>
+      </div>
+      <div class="chat-messages" id="chatMessages">
+        ${messages.length?messages.map(messageBubble).join(''):'<div class="chat-empty">Vous pouvez envoyer ici une information privée concernant votre enfant.<br>Les trois coachs ont accès à cette conversation.</div>'}
+      </div>
+      <form class="chat-compose" id="chatForm">
+        <textarea id="chatInput" rows="1" placeholder="Écrire un message…" required></textarea>
+        <button class="btn primary" type="submit">Envoyer</button>
+      </form>
+    </div>`;
+
+  const box=$('#chatMessages'); box.scrollTop=box.scrollHeight;
+  $('#enableNotifications').onclick=requestNotifications;
+  $('#chatForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter, body=$('#chatInput').value.trim();
+    if(!body)return;
+    setBusy(btn,true,'Envoi…');
+    const {error}=await sb.from('messages').insert({
+      conversation_id:conv.id,
+      sender_user_id:state.user.id,
+      sender_role:'parent',
+      sender_name:`Parent de ${child?.first_name||state.identity?.display_name||''}`,
+      body
+    });
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+    $('#chatInput').value='';
+    await renderParentContact();
+  };
+}
+
+async function renderCoachMessages(){
+  const {data:convs,error}=await sb.from('conversations')
+    .select('id,player_id,updated_at,players(first_name,last_name)')
+    .eq('team_id',state.team.id)
+    .order('updated_at',{ascending:false});
+  if(error)return toast(error.message,false);
+
+  const conversations=convs||[];
+  let latest={};
+  if(conversations.length){
+    const {data:msgs}=await sb.from('messages').select('*').in('conversation_id',conversations.map(c=>c.id)).order('created_at',{ascending:false});
+    (msgs||[]).forEach(m=>{if(!latest[m.conversation_id])latest[m.conversation_id]=m});
+  }
+
+  $('#content').innerHTML=`
+    <div class="coach-message-layout">
+      <div class="conversation-list">
+        <div class="conversation-list-head"><strong>Conversations parents</strong><button class="btn ghost small" id="coachNotif">🔔</button></div>
+        ${conversations.length?conversations.map(c=>{
+          const last=latest[c.id];
+          return `<button class="conversation-item" data-conversation="${c.id}">
+            <span class="conversation-avatar">${esc((c.players?.first_name||'?').slice(0,1).toUpperCase())}</span>
+            <span class="conversation-text"><strong>${esc(c.players?.first_name||'Joueur')}</strong>
+              <small>${last?esc(last.body.slice(0,65)):'Aucun message'}</small></span>
+          </button>`;
+        }).join(''):'<div class="empty panel">Aucune conversation parent pour le moment.</div>'}
+      </div>
+      <div class="coach-chat-placeholder" id="coachChatPanel"><div>💬</div><strong>Sélectionnez une conversation</strong><span>Les messages envoyés par les parents sont visibles par les trois coachs.</span></div>
+    </div>`;
+
+  $('#coachNotif').onclick=requestNotifications;
+  $$('[data-conversation]').forEach(b=>b.onclick=()=>openCoachConversation(b.dataset.conversation,conversations.find(c=>c.id===b.dataset.conversation)));
+}
+
+async function openCoachConversation(id,conv){
+  const messages=await loadConversationMessages(id);
+  $('#coachChatPanel').innerHTML=`
+    <div class="chat-shell coach-chat">
+      <div class="chat-header"><div><strong>${esc(conv?.players?.first_name||'Joueur')}</strong><small>Conversation parent ↔ staff U10</small></div></div>
+      <div class="chat-messages" id="chatMessages">${messages.map(messageBubble).join('')||'<div class="chat-empty">Aucun message.</div>'}</div>
+      <form class="chat-compose" id="coachChatForm">
+        <textarea id="coachChatInput" rows="1" placeholder="Répondre au parent…" required></textarea>
+        <button class="btn primary">Envoyer</button>
+      </form>
+    </div>`;
+  const box=$('#chatMessages');box.scrollTop=box.scrollHeight;
+  $('#coachChatForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter,body=$('#coachChatInput').value.trim();if(!body)return;
+    setBusy(btn,true,'Envoi…');
+    const {error}=await sb.from('messages').insert({
+      conversation_id:id,
+      sender_user_id:state.user.id,
+      sender_role:'coach',
+      sender_name:state.identity?.display_name||'Coach',
+      body
+    });
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+    $('#coachChatInput').value='';
+    await openCoachConversation(id,conv);
+  };
+}
+
+async function requestNotifications(){
+  if(!('Notification' in window))return toast("Les notifications ne sont pas prises en charge sur ce téléphone.",false);
+  const perm=await Notification.requestPermission();
+  if(perm==='granted')toast('Notifications activées');
+  else toast("Notifications non autorisées.",false);
+}
+
+async function showAppNotification(title,body){
+  if(!('Notification' in window)||Notification.permission!=='granted')return;
+  try{
+    const reg=await navigator.serviceWorker?.ready;
+    if(reg) await reg.showNotification(title,{body,icon:'./assets/icons/icon-192.png',badge:'./assets/icons/icon-192.png',tag:'u10-message'});
+    else new Notification(title,{body,icon:'./assets/icons/icon-192.png'});
+  }catch(_){}
+}
+
+function setupMessageRealtime(){
+  if(!sb||!state.team)return;
+  if(state.messageChannel){sb.removeChannel(state.messageChannel);state.messageChannel=null;}
+  state.messageChannel=sb.channel(`u10-messages-${state.user.id}-${Date.now()}`)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async payload=>{
+      const m=payload.new;
+      if(m.sender_user_id===state.user.id)return;
+
+      if(isCoach()){
+        const {data:conv}=await sb.from('conversations').select('team_id,players(first_name)').eq('id',m.conversation_id).maybeSingle();
+        if(conv?.team_id!==state.team.id)return;
+        await showAppNotification(`Message parent · ${conv?.players?.first_name||'U10'}`,m.body);
+        if(state.page==='messages')renderCoachMessages();
+      }else{
+        const conv=await getOrCreateConversation();
+        if(conv?.id!==m.conversation_id)return;
+        await showAppNotification('Coachs U10 Herseaux',m.body);
+        if(state.page==='contact')renderParentContact();
+      }
+    }).subscribe();
+}
 
 async function renderDashboard(){
   await loadCore(); const now=todayISO(); const upcoming=state.events.filter(e=>e.event_date>=now).slice(0,6); const thisMonth=state.events.filter(e=>e.event_date.slice(0,7)===now.slice(0,7));
@@ -1351,23 +1710,40 @@ function openEvaluationGuide(){
 }
 
 async function renderSettings(){
-  $('#content').innerHTML=`
-    <div class="grid2">
-      <div class="panel stack">
-        <h3>Mon accès coach</h3>
-        <label>Profil<input value="${esc(state.identity?.display_name||'')}" disabled /></label>
-        <p class="muted">Le téléphone conserve automatiquement la session Supabase. Tant que vous ne vous déconnectez pas et que les données du navigateur ne sont pas effacées, l'application s'ouvre directement.</p>
-      </div>
-      <div class="panel">
-        <h3>Équipe</h3>
-        <p><strong>${esc(state.team.name)}</strong><br><span class="muted">Saison ${esc(state.team.season)}</span></p>
-        <p class="muted">Rôle : Coach</p>
-        <p class="muted">L'accès parent sera ajouté dans une prochaine version avec des droits réduits.</p>
-      </div>
-    </div>`;
+  if(isCoach()){
+    $('#content').innerHTML=`
+      <div class="grid2">
+        <div class="panel stack">
+          <h3>Mon accès coach</h3>
+          <label>Profil<input value="${esc(state.identity?.display_name||'')}" disabled /></label>
+          <p class="muted">Le téléphone conserve automatiquement la session. Tant que vous ne vous déconnectez pas et que les données du navigateur ne sont pas effacées, l'application s'ouvre directement.</p>
+          <button class="btn secondary" id="settingsNotif">🔔 Activer les notifications de messages</button>
+        </div>
+        <div class="panel">
+          <h3>Équipe</h3>
+          <p><strong>${esc(state.team.name)}</strong><br><span class="muted">Saison ${esc(state.team.season)}</span></p>
+          <p class="muted">Rôle : Coach</p>
+        </div>
+      </div>`;
+  }else{
+    const child=state.players.find(p=>p.id===state.parentPlayerId);
+    $('#content').innerHTML=`
+      <div class="grid2">
+        <div class="panel stack">
+          <h3>Mon accès parent</h3>
+          <label>Enfant<input value="${esc(child?.first_name||state.identity?.display_name||'')}" disabled /></label>
+          <p class="muted">Votre session reste enregistrée sur ce téléphone. Utilisez Déconnexion uniquement si vous souhaitez changer d'accès.</p>
+          <button class="btn secondary" id="settingsNotif">🔔 Activer les notifications des coachs</button>
+        </div>
+        <div class="panel">
+          <h3>Confidentialité</h3>
+          <p>Vous avez uniquement accès aux présences et à la conversation liées à votre enfant.</p>
+          <p class="muted">Vos messages sont visibles par les trois coachs U10, dans une conversation commune au staff.</p>
+        </div>
+      </div>`;
+  }
+  $('#settingsNotif')?.addEventListener('click',requestNotifications);
 }
-
-
 
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));
 init();

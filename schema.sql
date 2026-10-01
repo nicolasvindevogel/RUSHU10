@@ -512,3 +512,6 @@ on conflict(team_id,month_num) do update set
   theme=excluded.theme,
   objectives=excluded.objectives;
 
+
+
+-- V10 : après schema.sql, exécuter UPGRADE_PARENTS_MESSAGES_V10.sql pour accès parents et messagerie.

@@ -162,3 +162,57 @@
   .training-doc-actions{grid-column:1/-1}
   .training-doc-actions .btn{flex:1}
 }
+
+
+/* === v10 Interface Parents + Messagerie === */
+.parent-welcome{display:flex;align-items:center;justify-content:space-between;gap:20px;background:linear-gradient(135deg,#173d24,#111914);border:1px solid rgba(28,173,82,.35);border-radius:24px;padding:22px;margin-bottom:22px}
+.parent-welcome small{font-weight:900;letter-spacing:.08em;color:#6ee995}
+.parent-welcome h2{margin:4px 0 6px;font-size:1.8rem}
+.parent-welcome p{margin:0;color:#c4d0c7}
+.parent-contact-cta{display:flex;align-items:center;justify-content:space-between;gap:15px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:20px}
+.parent-contact-cta div{display:grid;gap:4px}.parent-contact-cta span{color:var(--muted);font-size:.85rem}
+
+.parent-week-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;text-align:center;margin-bottom:14px}
+.parent-week-head div{display:grid}.parent-week-head small{font-size:.72rem;color:var(--muted);font-weight:900}
+.parent-presence-list{display:grid;gap:12px}
+.parent-presence-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:15px;display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:12px;align-items:center}
+.parent-choice{display:flex;gap:8px}
+.parent-choice-btn{border-radius:12px;border:1px solid var(--line);padding:11px 14px;font-weight:800;background:transparent;color:inherit;cursor:pointer}
+.parent-choice-btn.present.selected{background:#1cad52;border-color:#1cad52;color:white}
+.parent-choice-btn.absent.selected{background:#c83f3f;border-color:#c83f3f;color:white}
+.parent-presence-comment{grid-column:1/-1}
+
+.chat-shell{height:min(72vh,720px);display:grid;grid-template-rows:auto 1fr auto;background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.chat-header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#121915}
+.chat-header>div:not(.coach-avatars){display:grid;gap:2px;flex:1}.chat-header small{color:var(--muted)}
+.coach-avatars{display:flex}.coach-avatars span{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#1cad52;color:white;font-weight:900;border:2px solid #121915;margin-left:-6px}.coach-avatars span:first-child{margin-left:0}
+.chat-messages{padding:16px;overflow:auto;background:linear-gradient(rgba(7,14,9,.94),rgba(7,14,9,.94)),radial-gradient(circle at 20% 20%,#173d24 0 1px,transparent 1px);background-size:auto,22px 22px}
+.chat-row{display:flex;margin:7px 0}.chat-row.mine{justify-content:flex-end}.chat-row.theirs{justify-content:flex-start}
+.chat-bubble{max-width:min(78%,600px);padding:9px 11px 6px;border-radius:14px;background:#202722;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.chat-row.mine .chat-bubble{background:#145d2c;border-bottom-right-radius:4px}.chat-row.theirs .chat-bubble{border-bottom-left-radius:4px}
+.chat-bubble small{display:block;color:#72e69a;font-weight:800;margin-bottom:3px}.chat-bubble time{display:block;text-align:right;color:#a3aea6;font-size:.67rem;margin-top:4px}
+.chat-compose{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px;border-top:1px solid var(--line);background:#111713}
+.chat-compose textarea{resize:none;min-height:44px;max-height:110px}
+.chat-empty{text-align:center;color:var(--muted);padding:40px 15px;line-height:1.55}
+
+.coach-message-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;min-height:65vh}
+.conversation-list{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.conversation-list-head{display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid var(--line)}
+.conversation-item{display:grid;grid-template-columns:44px 1fr;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;text-align:left;padding:11px;cursor:pointer}
+.conversation-item:hover{background:rgba(255,255,255,.035)}
+.conversation-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#1b6e36;color:#fff;font-weight:900}
+.conversation-text{display:grid;gap:3px;min-width:0}.conversation-text small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coach-chat-placeholder{display:grid;place-items:center;text-align:center;align-content:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:18px;color:var(--muted)}.coach-chat-placeholder>div{font-size:2rem}.coach-chat-placeholder strong{color:inherit}
+.coach-chat{height:65vh}
+
+@media(max-width:760px){
+  .parent-welcome,.parent-contact-cta{align-items:stretch;flex-direction:column}
+  .parent-welcome .btn,.parent-contact-cta .btn{width:100%}
+  .parent-presence-card{grid-template-columns:1fr}
+  .parent-choice{display:grid;grid-template-columns:1fr 1fr}
+  .parent-presence-comment{grid-column:auto}
+  .chat-shell{height:calc(100dvh - 170px);min-height:500px;border-radius:14px}
+  .chat-header{align-items:flex-start;flex-wrap:wrap}.chat-header .btn{width:100%}
+  .chat-bubble{max-width:86%}
+  .coach-message-layout{grid-template-columns:1fr}.coach-chat-placeholder{min-height:180px}
+}

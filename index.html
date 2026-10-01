@@ -16,7 +16,7 @@
     <div class="auth-card">
       <img src="./logo.png" class="auth-logo" alt="Royale Union Sportive Herseautoise" />
       <h1>U10 HERSEAUX</h1>
-      <p class="muted">Présences · Calendrier · Matchs · Évaluations</p>
+      <p class="muted">Calendrier · Présences · Messages · Équipe U10</p>
 
       <div id="setupWarning" class="notice warning hidden">
         La connexion Supabase n'est pas configurée.
@@ -28,7 +28,7 @@
             <option value="">Choisir dans la liste…</option>
             <optgroup label="Coachs">
               <option value="coach-nicolas">VINDEVOGEL Nicolas</option>
-              <option value="coach-thibaut">THERY Thibaut</option>
+              <option value="coach-thibaut">THERY Thibault</option>
               <option value="coach-maxime">DELANNOY Maxime</option>
             </optgroup>
             <optgroup label="Joueurs / parents">
@@ -58,8 +58,9 @@
           </select>
         </label>
 
-        <div id="parentPending" class="notice warning hidden">
-          L'accès parent sera activé dans la prochaine étape. Pour le moment, seuls les coachs peuvent se connecter.
+        <div id="parentPending" class="notice hidden">
+          <strong>Accès parent</strong><br>
+          À la première connexion, choisissez un code personnel à 6 chiffres. Ce code sera ensuite utilisé pour retrouver l'accès à votre enfant.
         </div>
 
         <div id="pinArea" class="stack hidden">

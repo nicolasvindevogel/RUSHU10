@@ -96,3 +96,31 @@ Nouveau menu **Entraînements** :
 - suppression des fichiers par les coachs.
 
 Le bucket `training-files` est limité à 50 Mo par fichier dans le SQL.
+
+
+## v10 — Interface parents + messagerie
+Exécuter une fois `supabase/UPGRADE_PARENTS_MESSAGES_V10.sql`.
+
+### Accès parent
+- le parent choisit son enfant dans la liste ;
+- première connexion : création de son PIN personnel à 6 chiffres ;
+- ensuite le téléphone conserve normalement la session ;
+- accès limité à son enfant.
+
+### Parent
+- Accueil : calendrier et événements du mois ;
+- Présences : semaine en cours automatiquement, ou semaine suivante si l'application est ouverte un dimanche ;
+- réponse Présent / Absent et remarque éventuelle ;
+- Contact : conversation privée type messagerie avec le staff U10.
+
+### Coach
+- nouveau menu Messages ;
+- toutes les conversations parents sont regroupées ;
+- les trois coachs répondent dans la même conversation au nom du staff, sans que le parent doive choisir un coach.
+
+### Notifications
+Cette version peut afficher une notification lorsque l'application/PWA est ouverte ou reste active en arrière-plan et qu'un nouveau message arrive via Supabase Realtime.
+Pour recevoir de vraies notifications push lorsque l'application est totalement fermée, il faudra ajouter ultérieurement un service Web Push (VAPID + fonction serveur/Edge Function). Cette partie n'est pas simulée dans la v10.
+
+### Correction
+`THERY Thibault` remplace `THERY Thibaut`.
