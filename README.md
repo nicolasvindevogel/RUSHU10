@@ -132,3 +132,20 @@ Pour recevoir de vraies notifications push lorsque l'application est totalement 
 - sur smartphone, ouverture d'une conversation en plein écran avec bouton retour ;
 - explication spécifique iPhone pour les notifications ;
 - sur iPhone, l'application doit être ajoutée à l'écran d'accueil puis ouverte depuis son icône pour demander la permission Web Push (iOS 16.4+).
+
+
+## v12 — Coachs parents + plusieurs téléphones
+Exécuter une fois `supabase/UPGRADE_COACHS_PARENTS_V12.sql`.
+
+### Coachs liés à leur enfant
+- Nicolas → Giulian
+- Thibault → Valentin
+- Maxime → Soan
+
+Un nouveau menu **Mon enfant** apparaît côté coach. Il permet de remplir les présences parentales de son enfant sans quitter le profil Coach.
+
+### Accès Parent conservé
+L'accès Parent normal de Giulian, Valentin et Soan reste disponible dans l'écran de connexion. Il peut donc être utilisé par le conjoint ou sur un autre téléphone.
+
+### Multi-appareils
+Une même identité Parent peut désormais être connectée sur plusieurs téléphones avec le même code à 6 chiffres. La connexion d'un deuxième téléphone ne déconnecte plus le premier.

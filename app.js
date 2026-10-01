@@ -10,7 +10,7 @@ const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPAB
   }
 }) : null;
 
-const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null, calendarView:(window.innerWidth<760?'agenda':'month'), trainingDocs:[], parentPlayerId:null, messageChannel:null };
+const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null, calendarView:(window.innerWidth<760?'agenda':'month'), trainingDocs:[], parentPlayerId:null, coachChildId:null, parentWeek:null, coachChildWeek:null, messageChannel:null };
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -34,6 +34,7 @@ const NAV_COACH = [
   ['dashboard','⌂','Tableau de bord'],
   ['calendar','▦','Calendrier'],
   ['attendance','✓','Présences'],
+  ['coachchild','👨‍👦','Mon enfant'],
   ['matches','⚽','Matchs'],
   ['traininghub','📋','Entraînements'],
   ['players','👥','Joueurs'],
@@ -55,6 +56,7 @@ function pageMeta(page){
     dashboard:['Tableau de bord','Vue d’ensemble de l’équipe'],
     calendar:['Calendrier','Entraînements, matchs et événements du club'],
     attendance:['Présences','Prévisions parents et présence réelle'],
+    coachchild:['Mon enfant','Présences parentales de votre enfant'],
     matches:['Matchs','Championnat, amicaux, compositions et visuels'],
     traininghub:['Entraînements','Programme, thèmes et fichiers de séance'],
     players:['Joueurs','Effectif U10'],
@@ -88,6 +90,7 @@ async function go(page){
   if(page==='dashboard') await (isCoach()?renderDashboard():renderParentHome());
   if(page==='calendar' && isCoach()) await renderCalendar();
   if(page==='attendance') await (isCoach()?renderAttendance():renderParentAttendance());
+  if(page==='coachchild' && isCoach()) await renderCoachChild();
   if(page==='matches' && isCoach()) await renderMatches();
   if(page==='traininghub' && isCoach()) await renderTrainingHub();
   if(page==='players' && isCoach()) await renderPlayers();
@@ -158,11 +161,42 @@ async function init(){
 async function loadUser(user){
   state.user=user;
 
-  const {data:identity,error:identityError}=await sb
-    .from('app_identities')
-    .select('identity_key,display_name,identity_type,auth_user_id,player_id')
+  // v12 : une même identité peut être utilisée sur plusieurs téléphones.
+  let identity=null;
+  let identityError=null;
+
+  const sessionLookup=await sb
+    .from('app_identity_sessions')
+    .select('identity_key')
     .eq('auth_user_id',user.id)
+    .order('created_at',{ascending:false})
+    .limit(1)
     .maybeSingle();
+
+  if(sessionLookup.error && !String(sessionLookup.error.message||'').includes('app_identity_sessions')){
+    console.error(sessionLookup.error);
+  }
+
+  if(sessionLookup.data?.identity_key){
+    const res=await sb
+      .from('app_identities')
+      .select('identity_key,display_name,identity_type,auth_user_id,player_id')
+      .eq('identity_key',sessionLookup.data.identity_key)
+      .maybeSingle();
+    identity=res.data;
+    identityError=res.error;
+  }
+
+  // Compatibilité avec les anciennes sessions créées avant v12.
+  if(!identity){
+    const legacy=await sb
+      .from('app_identities')
+      .select('identity_key,display_name,identity_type,auth_user_id,player_id')
+      .eq('auth_user_id',user.id)
+      .maybeSingle();
+    identity=legacy.data;
+    identityError=legacy.error;
+  }
 
   if(identityError && !String(identityError.message||'').includes('app_identities')){
     console.error(identityError);
@@ -174,6 +208,7 @@ async function loadUser(user){
     state.membership=null;
     state.team=null;
     state.parentPlayerId=null;
+    state.coachChildId=null;
     setView('authView');
     resetLoginForm();
     return;
@@ -198,6 +233,7 @@ async function loadUser(user){
   state.membership=memberships[0];
   state.team=memberships[0].teams;
   state.parentPlayerId=identity.identity_type==='player'?identity.player_id:null;
+  state.coachChildId=null;
   state.profile={id:user.id,full_name:identity.display_name,role:memberships[0].role};
 
   $('#seasonLabel').textContent=state.team.season||'';
@@ -205,7 +241,16 @@ async function loadUser(user){
   setView('appView');
   await loadCore();
 
-  // Les parents arrivent toujours sur l'accueil. Les coachs gardent leur page si elle est autorisée.
+  if(isCoach()){
+    const {data:link}=await sb
+      .from('coach_children')
+      .select('player_id')
+      .eq('team_id',state.team.id)
+      .eq('coach_identity_key',identity.identity_key)
+      .maybeSingle();
+    state.coachChildId=link?.player_id||null;
+  }
+
   state.page=isCoach() ? (NAV_COACH.some(x=>x[0]===state.page)?state.page:'dashboard') : 'dashboard';
   renderNav();
   setupMessageRealtime();
@@ -417,16 +462,46 @@ async function renderParentHome(){
 }
 
 async function renderParentAttendance(){
+  await renderChildAttendance(state.parentPlayerId,false);
+}
+
+async function renderCoachChild(){
   await loadCore();
-  const pid=state.parentPlayerId;
+  const pid=state.coachChildId;
   const child=state.players.find(p=>p.id===pid);
+
   if(!pid){
-    $('#content').innerHTML='<div class="notice warning">Aucun enfant n’est lié à cet accès.</div>';
+    $('#content').innerHTML='<div class="notice warning">Aucun enfant n’est encore lié à ce profil coach.</div>';
     return;
   }
 
-  let monday=state.parentWeek ? mondayOf(state.parentWeek) : parentWeekMonday();
-  state.parentWeek=isoLocal(monday);
+  $('#content').innerHTML=`
+    <div class="coach-child-intro">
+      <div>
+        <small>MODE PARENT DEPUIS LE PROFIL COACH</small>
+        <h2>${esc(child?.first_name||'Mon enfant')}</h2>
+        <p>Vous restez connecté comme coach, mais vous pouvez ici remplir les présences parentales de votre enfant.</p>
+      </div>
+      <span class="pill green">Profil coach actif</span>
+    </div>
+    <div id="coachChildAttendance"></div>`;
+
+  await renderChildAttendance(pid,true,'#coachChildAttendance');
+}
+
+async function renderChildAttendance(pid,coachMode=false,targetSelector='#content'){
+  await loadCore();
+  const target=$(targetSelector);
+  const child=state.players.find(p=>p.id===pid);
+
+  if(!pid){
+    target.innerHTML='<div class="notice warning">Aucun enfant n’est lié à cet accès.</div>';
+    return;
+  }
+
+  const weekKey=coachMode?'coachChildWeek':'parentWeek';
+  let monday=state[weekKey] ? mondayOf(state[weekKey]) : parentWeekMonday();
+  state[weekKey]=isoLocal(monday);
   const sunday=addDays(monday,6);
   const start=isoLocal(monday), end=isoLocal(sunday);
 
@@ -443,11 +518,11 @@ async function renderParentAttendance(){
   }
   const amap=new Map(avail.map(x=>[x.event_id,x]));
 
-  $('#content').innerHTML=`
+  target.innerHTML=`
     <div class="panel parent-week-head">
-      <button class="btn ghost small" id="parentPrevWeek">←</button>
+      <button class="btn ghost small" data-child-prev>←</button>
       <div><small>SEMAINE</small><strong>${fmtFullDate(start)} → ${fmtFullDate(end)}</strong></div>
-      <button class="btn ghost small" id="parentNextWeek">→</button>
+      <button class="btn ghost small" data-child-next>→</button>
     </div>
 
     <div class="notice"><strong>${esc(child?.first_name||'Votre enfant')}</strong> · indiquez Présent ou Absent pour chaque événement de la semaine.</div>
@@ -465,28 +540,41 @@ async function renderParentAttendance(){
               ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
             </div>
           </div>
-          <div class="parent-choice" data-parent-event="${e.id}">
+          <div class="parent-choice" data-child-event="${e.id}">
             <button class="parent-choice-btn present ${a?.status==='present'?'selected':''}" data-status="present">✓ Présent</button>
             <button class="parent-choice-btn absent ${a?.status==='absent'?'selected':''}" data-status="absent">✕ Absent</button>
           </div>
-          <input class="parent-presence-comment" data-parent-comment="${e.id}" value="${esc(a?.comment||'')}" placeholder="Remarque éventuelle / raison d'absence" />
+          <input class="parent-presence-comment" data-child-comment="${e.id}" value="${esc(a?.comment||'')}" placeholder="Remarque éventuelle / raison d'absence" />
         </div>`;
       }).join(''):'<div class="empty panel">Aucun événement prévu cette semaine.</div>'}
     </div>`;
 
-  $('#parentPrevWeek').onclick=()=>{state.parentWeek=isoLocal(addDays(monday,-7));renderParentAttendance()};
-  $('#parentNextWeek').onclick=()=>{state.parentWeek=isoLocal(addDays(monday,7));renderParentAttendance()};
+  $('[data-child-prev]',target).onclick=()=>{
+    state[weekKey]=isoLocal(addDays(monday,-7));
+    coachMode?renderCoachChild():renderParentAttendance();
+  };
+  $('[data-child-next]',target).onclick=()=>{
+    state[weekKey]=isoLocal(addDays(monday,7));
+    coachMode?renderCoachChild():renderParentAttendance();
+  };
 
-  $$('[data-parent-event] .parent-choice-btn').forEach(b=>b.onclick=async()=>{
-    const wrap=b.closest('[data-parent-event]');
-    const eventId=wrap.dataset.parentEvent;
+  $$('[data-child-event] .parent-choice-btn',target).forEach(b=>b.onclick=async()=>{
+    const wrap=b.closest('[data-child-event]');
+    const eventId=wrap.dataset.childEvent;
     const status=b.dataset.status;
-    const comment=$(`[data-parent-comment="${eventId}"]`)?.value.trim()||null;
+    const comment=$(`[data-child-comment="${eventId}"]`,target)?.value.trim()||null;
     $$('button',wrap).forEach(x=>x.classList.remove('selected'));
     b.classList.add('selected');
+
     const {error}=await sb.from('availability').upsert({
-      event_id:eventId,player_id:pid,status,comment,set_by:state.user.id,updated_at:new Date().toISOString()
+      event_id:eventId,
+      player_id:pid,
+      status,
+      comment,
+      set_by:state.user.id,
+      updated_at:new Date().toISOString()
     },{onConflict:'event_id,player_id'});
+
     if(error){
       b.classList.remove('selected');
       return toast(error.message,false);
@@ -494,15 +582,22 @@ async function renderParentAttendance(){
     toast(status==='present'?'Présence enregistrée':'Absence enregistrée');
   });
 
-  $$('.parent-presence-comment').forEach(inp=>inp.onchange=async()=>{
-    const eventId=inp.dataset.parentComment;
+  $$('.parent-presence-comment',target).forEach(inp=>inp.onchange=async()=>{
+    const eventId=inp.dataset.childComment;
     const current=amap.get(eventId);
-    const selected=$(`[data-parent-event="${eventId}"] .parent-choice-btn.selected`);
+    const selected=$(`[data-child-event="${eventId}"] .parent-choice-btn.selected`,target);
     const status=selected?.dataset.status||current?.status;
     if(!status)return;
+
     const {error}=await sb.from('availability').upsert({
-      event_id:eventId,player_id:pid,status,comment:inp.value.trim()||null,set_by:state.user.id,updated_at:new Date().toISOString()
+      event_id:eventId,
+      player_id:pid,
+      status,
+      comment:inp.value.trim()||null,
+      set_by:state.user.id,
+      updated_at:new Date().toISOString()
     },{onConflict:'event_id,player_id'});
+
     if(error)return toast(error.message,false);
     toast('Remarque enregistrée');
   });

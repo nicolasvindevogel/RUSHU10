@@ -373,3 +373,23 @@
     grid-template-columns:1fr auto;
   }
 }
+
+
+/* === v12 Coach + rôle parent === */
+.coach-child-intro{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  background:linear-gradient(135deg,#173d24,#111914);
+  border:1px solid rgba(28,173,82,.35);
+  border-radius:20px;
+  padding:17px;
+  margin-bottom:16px;
+}
+.coach-child-intro small{font-size:.72rem;font-weight:900;color:#6ee995;letter-spacing:.06em}
+.coach-child-intro h2{margin:4px 0}
+.coach-child-intro p{margin:0;color:var(--muted);font-size:.88rem}
+@media(max-width:760px){
+  .coach-child-intro{align-items:flex-start;flex-direction:column}
+}

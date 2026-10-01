@@ -515,3 +515,6 @@ on conflict(team_id,month_num) do update set
 
 
 -- V10 : après schema.sql, exécuter UPGRADE_PARENTS_MESSAGES_V10.sql pour accès parents et messagerie.
+
+
+-- V12 : exécuter UPGRADE_COACHS_PARENTS_V12.sql pour multi-appareils et coachs parents.
