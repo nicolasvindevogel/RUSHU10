@@ -10,7 +10,7 @@ const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPAB
   }
 }) : null;
 
-const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null };
+const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null, calendarView:(window.innerWidth<760?'agenda':'month'), trainingDocs:[] };
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -35,6 +35,7 @@ const NAV_COACH = [
   ['calendar','▦','Calendrier'],
   ['attendance','✓','Présences'],
   ['matches','⚽','Matchs'],
+  ['traininghub','📋','Entraînements'],
   ['players','👥','Joueurs'],
   ['evaluations','★','Évaluations'],
   ['settings','⚙','Paramètres']
@@ -48,6 +49,7 @@ function pageMeta(page){
     calendar:['Calendrier','Entraînements, matchs et tournois'],
     attendance:['Présences','Prévisions parents et présence réelle'],
     matches:['Matchs','Championnat, amicaux, compositions et visuels'],
+    traininghub:['Entraînements','Programme, thèmes et fichiers de séance'],
     players:['Joueurs','Effectif U10'],
     evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],
     settings:['Paramètres','Compte et accès à l’équipe']
@@ -66,6 +68,7 @@ async function go(page){
   if(page==='calendar') await renderCalendar();
   if(page==='attendance') await renderAttendance();
   if(page==='matches') await renderMatches();
+  if(page==='traininghub') await renderTrainingHub();
   if(page==='players') await renderPlayers();
   if(page==='evaluations') await renderEvaluations();
   if(page==='settings') await renderSettings();
@@ -368,26 +371,43 @@ async function renderCalendar(){
   const monthEvents=state.events.filter(e=>{
     const x=new Date(e.event_date+'T12:00:00');
     return x.getFullYear()===y&&x.getMonth()===m;
-  });
+  }).sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  const view=state.calendarView||'agenda';
   $('#content').innerHTML=`
-    <div class="calendar-toolbar">
+    <div class="calendar-toolbar calendar-toolbar-v9">
       <div class="toolbar-group">
         <button class="btn ghost small" id="prevMonth">←</button>
         <button class="btn ghost small" id="todayMonth">Aujourd'hui</button>
         <button class="btn ghost small" id="nextMonth">→</button>
       </div>
-      <strong>${new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(d)}</strong>
-      <button class="btn primary small" id="addEvent">+ Événement</button>
+      <strong class="calendar-month-title">${new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(d)}</strong>
+      <div class="toolbar-group">
+        <button class="btn ${view==='agenda'?'primary':'ghost'} small" id="agendaView">Agenda</button>
+        <button class="btn ${view==='month'?'primary':'ghost'} small" id="monthView">Mois</button>
+        <button class="btn primary small" id="addEvent">+ Événement</button>
+      </div>
     </div>
-    ${calendarHTML(y,m)}
-    <div class="section-head"><h3>Événements du mois</h3></div>
-    <div class="event-list">${monthEvents.map(eventCard).join('')||'<div class="empty panel">Aucun événement.</div>'}</div>`;
+
+    <div class="calendar-legend">
+      <span><i class="dot training"></i>Entraînement</span>
+      <span><i class="dot match"></i>Match</span>
+      <span><i class="dot tournament"></i>Tournoi</span>
+      <span><i class="dot other"></i>Club</span>
+    </div>
+
+    ${view==='month'
+      ? calendarHTML(y,m)
+      : agendaCalendarHTML(monthEvents)
+    }`;
+
   $('#prevMonth').onclick=()=>{state.month=new Date(y,m-1,1);renderCalendar()};
   $('#nextMonth').onclick=()=>{state.month=new Date(y,m+1,1);renderCalendar()};
   $('#todayMonth').onclick=()=>{state.month=new Date();renderCalendar()};
+  $('#agendaView').onclick=()=>{state.calendarView='agenda';renderCalendar()};
+  $('#monthView').onclick=()=>{state.calendarView='month';renderCalendar()};
   $('#addEvent').onclick=()=>eventModal();
   $$('[data-cal-event]').forEach(b=>b.onclick=()=>eventModal(state.events.find(e=>e.id===b.dataset.calEvent)));
-  bindEventButtons();
 }
 
 function calendarHTML(y,m){
@@ -399,12 +419,51 @@ function calendarHTML(y,m){
     dd.setDate(start.getDate()+i);
     const iso=[dd.getFullYear(),String(dd.getMonth()+1).padStart(2,'0'),String(dd.getDate()).padStart(2,'0')].join('-');
     const evs=state.events.filter(e=>e.event_date===iso);
-    cells+=`<div class="cal-day ${dd.getMonth()!==m?'other':''}">
+    const isToday=iso===todayISO();
+    cells+=`<div class="cal-day ${dd.getMonth()!==m?'other-month':''} ${isToday?'today':''}">
       <span class="day-num">${dd.getDate()}</span>
-      ${evs.map(e=>`<button type="button" class="cal-event ${e.type}" data-cal-event="${e.id}" title="Cliquer pour modifier">${timeShort(e.start_time)||''} ${esc(e.title)}</button>`).join('')}
+      <div class="cal-events">
+        ${evs.map(e=>`<button type="button" class="cal-event ${e.type}" data-cal-event="${e.id}">
+          <span>${timeShort(e.start_time)||''}</span>${esc(e.title)}
+        </button>`).join('')}
+      </div>
     </div>`;
   }
   return `<div class="calendar">${names.map(n=>`<div class="cal-head">${n}</div>`).join('')}${cells}</div>`;
+}
+
+function agendaCalendarHTML(events){
+  if(!events.length)return `<div class="empty panel">Aucun événement ce mois-ci.</div>`;
+  const grouped=new Map();
+  events.forEach(e=>{
+    if(!grouped.has(e.event_date))grouped.set(e.event_date,[]);
+    grouped.get(e.event_date).push(e);
+  });
+  return `<div class="agenda-calendar">
+    ${[...grouped.entries()].map(([date,items])=>{
+      const d=new Date(date+'T12:00:00');
+      const day=new Intl.DateTimeFormat('fr-BE',{weekday:'short'}).format(d).replace('.','');
+      const month=new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(d).replace('.','');
+      return `<section class="agenda-day ${date===todayISO()?'today':''}">
+        <div class="agenda-date">
+          <small>${day}</small><strong>${String(d.getDate()).padStart(2,'0')}</strong><span>${month}</span>
+        </div>
+        <div class="agenda-items">
+          ${items.map(e=>`<button class="agenda-event ${e.type}" data-cal-event="${e.id}">
+            <div class="agenda-event-top">
+              <strong>${esc(e.title)}</strong>
+              <span>${timeShort(e.start_time)||'Heure à préciser'}</span>
+            </div>
+            <div class="agenda-event-meta">
+              ${e.opponent?`<span>⚽ ${esc(e.opponent)}</span>`:''}
+              ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
+              ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
+            </div>
+          </button>`).join('')}
+        </div>
+      </section>`;
+    }).join('')}
+  </div>`;
 }
 
 function eventModal(e=null){
@@ -788,6 +847,173 @@ async function generateMatchImage(match){
       }
     }catch(err){if(err.name!=='AbortError')toast(err.message||String(err),false)}
   };
+}
+
+async function renderTrainingHub(){
+  const month=new Date().getMonth()+1;
+  const [{data:program,error:programError},{data:docs,error:docsError}]=await Promise.all([
+    sb.from('training_program').select('*').eq('team_id',state.team.id).order('month_num'),
+    sb.from('training_documents').select('*').eq('team_id',state.team.id).order('session_date',{ascending:false}).order('created_at',{ascending:false})
+  ]);
+  if(programError)console.warn(programError);
+  if(docsError)console.warn(docsError);
+  state.trainingDocs=docs||[];
+
+  const programme=program||[];
+  const current=programme.find(x=>x.month_num===month);
+  const upcomingTraining=state.events
+    .filter(e=>e.type==='training'&&e.event_date>=todayISO())
+    .sort((a,b)=>a.event_date.localeCompare(b.event_date))[0];
+
+  $('#content').innerHTML=`
+    ${current?`<div class="training-theme-card">
+      <div class="training-theme-month">${esc(current.month_label)}</div>
+      <div>
+        <small>THÈME DU MOIS</small>
+        <h2>${esc(current.theme)}</h2>
+        <p>${esc(current.objectives)}</p>
+      </div>
+    </div>`:''}
+
+    <div class="grid2 training-top-grid">
+      <div class="panel">
+        <h3>Prochain entraînement</h3>
+        ${upcomingTraining?`
+          <p class="training-next-date">${fmtFullDate(upcomingTraining.event_date)}</p>
+          <div class="muted">${timeShort(upcomingTraining.start_time)||'Heure à préciser'} ${upcomingTraining.location?'· '+esc(upcomingTraining.location):''}</div>
+        `:'<p class="muted">Aucun entraînement planifié.</p>'}
+      </div>
+      <div class="panel">
+        <h3>Ajouter une séance</h3>
+        <p class="muted">PDF, image, document Word, Excel ou autre fichier utile à la séance.</p>
+        <button class="btn primary" id="uploadTrainingBtn">+ Ajouter des fichiers</button>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div><h3>Programme annuel</h3><span class="muted">Thèmes pédagogiques U10</span></div>
+    </div>
+    <div class="programme-strip">
+      ${programme.map(p=>`<div class="programme-card ${p.month_num===month?'current':''}">
+        <small>${esc(p.month_label)}</small>
+        <strong>${esc(p.theme)}</strong>
+        <span>${esc(p.objectives)}</span>
+      </div>`).join('')}
+    </div>
+
+    <div class="section-head">
+      <div><h3>Fichiers de séances</h3><span class="muted">${state.trainingDocs.length} fichier(s)</span></div>
+    </div>
+    <div class="training-doc-list">
+      ${state.trainingDocs.length?state.trainingDocs.map(trainingDocCard).join(''):'<div class="empty panel">Aucun fichier de séance pour le moment.</div>'}
+    </div>`;
+
+  $('#uploadTrainingBtn').onclick=trainingUploadModal;
+  $$('[data-training-open]').forEach(b=>b.onclick=()=>openTrainingDocument(b.dataset.trainingOpen));
+  $$('[data-training-delete]').forEach(b=>b.onclick=()=>deleteTrainingDocument(b.dataset.trainingDelete));
+}
+
+function trainingDocCard(doc){
+  const ext=(doc.original_name||'').split('.').pop()?.toUpperCase()||'FICHIER';
+  return `<div class="training-doc-card">
+    <div class="file-badge">${esc(ext.slice(0,4))}</div>
+    <div class="training-doc-main">
+      <div class="event-title">
+        <h4>${esc(doc.title||doc.original_name)}</h4>
+        <span class="pill">${fmtFullDate(doc.session_date)}</span>
+      </div>
+      <div class="muted">${esc(doc.original_name)}${doc.notes?' · '+esc(doc.notes):''}</div>
+    </div>
+    <div class="training-doc-actions">
+      <button class="btn secondary small" data-training-open="${doc.id}">Ouvrir</button>
+      <button class="btn danger small" data-training-delete="${doc.id}">Supprimer</button>
+    </div>
+  </div>`;
+}
+
+function trainingUploadModal(){
+  const nearest=state.events
+    .filter(e=>e.type==='training'&&e.event_date>=todayISO())
+    .sort((a,b)=>a.event_date.localeCompare(b.event_date))[0];
+
+  openModal(`<h2>Ajouter une séance d'entraînement</h2>
+    <form id="trainingUploadForm" class="stack">
+      <label>Date de la séance
+        <input id="trainingDate" type="date" required value="${nearest?.event_date||todayISO()}" />
+      </label>
+      <label>Titre
+        <input id="trainingTitle" required placeholder="Ex. Séance dribble 1v1" />
+      </label>
+      <label>Remarque / objectif
+        <textarea id="trainingNotes" placeholder="Optionnel"></textarea>
+      </label>
+      <label>Fichiers
+        <input id="trainingFiles" type="file" multiple required />
+      </label>
+      <div class="notice">Tu peux sélectionner plusieurs fichiers en une fois. Ils resteront accessibles aux coachs depuis ce menu.</div>
+      <button class="btn primary" type="submit">Uploader la séance</button>
+    </form>`);
+
+  $('#trainingUploadForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter;
+    const files=[...$('#trainingFiles').files];
+    if(!files.length)return toast('Choisis au moins un fichier.',false);
+    setBusy(btn,true,'Upload…');
+
+    const date=$('#trainingDate').value;
+    const title=$('#trainingTitle').value.trim();
+    const notes=$('#trainingNotes').value.trim()||null;
+
+    for(const file of files){
+      const safe=file.name.replace(/[^a-zA-Z0-9._-]+/g,'-');
+      const path=`${state.team.id}/${date}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
+      const {error:uploadError}=await sb.storage.from('training-files').upload(path,file,{upsert:false,contentType:file.type||undefined});
+      if(uploadError){
+        setBusy(btn,false);
+        return toast(`Upload impossible : ${uploadError.message}`,false);
+      }
+      const {error:insertError}=await sb.from('training_documents').insert({
+        team_id:state.team.id,
+        session_date:date,
+        title,
+        notes,
+        storage_path:path,
+        original_name:file.name,
+        file_type:file.type||null,
+        size_bytes:file.size,
+        uploaded_by:state.user.id
+      });
+      if(insertError){
+        await sb.storage.from('training-files').remove([path]);
+        setBusy(btn,false);
+        return toast(insertError.message,false);
+      }
+    }
+    setBusy(btn,false);
+    closeModal();
+    toast(`${files.length} fichier(s) ajouté(s)`);
+    await renderTrainingHub();
+  };
+}
+
+async function openTrainingDocument(id){
+  const doc=state.trainingDocs.find(x=>x.id===id);
+  if(!doc)return;
+  const {data,error}=await sb.storage.from('training-files').createSignedUrl(doc.storage_path,60*10);
+  if(error)return toast(error.message,false);
+  window.open(data.signedUrl,'_blank','noopener');
+}
+
+async function deleteTrainingDocument(id){
+  const doc=state.trainingDocs.find(x=>x.id===id);
+  if(!doc||!confirm(`Supprimer "${doc.original_name}" ?`))return;
+  const {error:storageError}=await sb.storage.from('training-files').remove([doc.storage_path]);
+  if(storageError)return toast(storageError.message,false);
+  const {error}=await sb.from('training_documents').delete().eq('id',id);
+  if(error)return toast(error.message,false);
+  toast('Fichier supprimé');
+  await renderTrainingHub();
 }
 
 async function renderPlayers(){ if(!isCoach()){go('dashboard');return;} await loadCore(); const {data:links}=await sb.from('player_guardians').select('player_id,user_id,profiles(full_name)'); const counts={};(links||[]).forEach(l=>counts[l.player_id]=(counts[l.player_id]||0)+1); $('#content').innerHTML=`<div class="section-head"><h3>Effectif U10</h3><button class="btn primary small" id="addPlayer">+ Joueur</button></div><div class="table-wrap"><table><thead><tr><th>Joueur</th><th>N°</th><th>Parents liés</th><th>Code parent</th><th>Action</th></tr></thead><tbody>${state.players.map(p=>`<tr><td><strong>${esc(p.first_name)} ${esc(p.last_name||'')}</strong></td><td>${p.number||'—'}</td><td>${counts[p.id]||0}</td><td><button class="btn ghost small" data-pin="${p.id}">Générer / remplacer</button></td><td><button class="btn danger small" data-disable="${p.id}">Désactiver</button></td></tr>`).join('')}</tbody></table></div>`; $('#addPlayer').onclick=()=>playerModal(); $$('[data-pin]').forEach(b=>b.onclick=()=>generatePin(b.dataset.pin)); $$('[data-disable]').forEach(b=>b.onclick=async()=>{if(!confirm('Désactiver ce joueur ?'))return;const{error}=await sb.from('players').update({active:false}).eq('id',b.dataset.disable);if(error)return toast(error.message,false);await loadCore();renderPlayers()}); }

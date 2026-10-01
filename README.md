@@ -72,3 +72,27 @@ Avant utilisation des nouvelles évaluations, exécuter une fois `supabase/UPGRA
 1. l'entraînement ou match du jour s'il existe ;
 2. sinon l'événement entraînement/match le plus proche dans le calendrier.
 Une sélection faite manuellement reste prioritaire pendant la navigation en cours.
+
+
+## v9 — Calendrier mobile + espace Entraînements
+Exécuter une fois `supabase/UPGRADE_ENTRAINEMENTS_V9.sql`.
+
+### Calendrier
+- vue **Agenda** pensée pour smartphone (par défaut sur petit écran) ;
+- vue **Mois** conservée sur demande ;
+- boutons Agenda / Mois ;
+- légende couleurs ;
+- événements regroupés par date, avec heure, lieu, adversaire et rendez-vous directement visibles.
+
+### Entraînements
+Nouveau menu **Entraînements** :
+- thème pédagogique du mois ;
+- programme annuel Septembre → Juin repris du tableau fourni ;
+- prochain entraînement ;
+- upload de plusieurs fichiers par séance ;
+- fichiers PDF, images, Word, Excel, etc. ;
+- stockage privé dans Supabase Storage ;
+- ouverture via lien temporaire signé ;
+- suppression des fichiers par les coachs.
+
+Le bucket `training-files` est limité à 50 Mo par fichier dans le SQL.

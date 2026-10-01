@@ -90,3 +90,75 @@
 @media(max-width:700px){
   .guide-grid{grid-template-columns:1fr}
 }
+
+
+/* === v9 Calendrier mobile + espace Entraînements === */
+.calendar-toolbar-v9{gap:12px;flex-wrap:wrap}
+.calendar-month-title{text-transform:capitalize}
+.calendar-legend{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0 18px;color:var(--muted);font-size:.84rem}
+.calendar-legend span{display:flex;align-items:center;gap:6px}
+.calendar-legend .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.calendar-legend .dot.training{background:#1cad52}
+.calendar-legend .dot.match{background:#dd4747}
+.calendar-legend .dot.tournament{background:#9157d6}
+.calendar-legend .dot.other{background:#3787e6}
+.cal-day.other-month{opacity:.38}
+.cal-day.today{outline:2px solid rgba(28,173,82,.65);outline-offset:-2px}
+.cal-events{display:grid;gap:4px;margin-top:6px}
+.cal-event{border-radius:7px;padding:5px 6px;font-size:.72rem;line-height:1.15;min-height:26px}
+.cal-event span{font-weight:900;margin-right:4px}
+
+.agenda-calendar{display:grid;gap:10px}
+.agenda-day{display:grid;grid-template-columns:72px 1fr;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px}
+.agenda-day.today{border-color:var(--green);box-shadow:0 0 0 1px rgba(28,173,82,.18)}
+.agenda-date{display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid var(--line);text-transform:capitalize}
+.agenda-date small{color:var(--muted);font-weight:800}
+.agenda-date strong{font-size:1.85rem;line-height:1.05}
+.agenda-date span{font-size:.8rem;color:var(--muted)}
+.agenda-items{display:grid;gap:8px}
+.agenda-event{width:100%;text-align:left;border:0;border-left:5px solid;border-radius:12px;padding:11px 12px;background:#0f1812;color:inherit}
+.agenda-event.training{border-color:#1cad52}
+.agenda-event.match{border-color:#dd4747}
+.agenda-event.tournament{border-color:#9157d6}
+.agenda-event.other{border-color:#3787e6}
+.agenda-event-top{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.agenda-event-top span{font-size:.84rem;color:var(--muted)}
+.agenda-event-meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;color:var(--muted);font-size:.8rem}
+
+.training-theme-card{display:grid;grid-template-columns:120px 1fr;gap:20px;align-items:center;background:linear-gradient(135deg,#173d24,#101a13);border:1px solid rgba(28,173,82,.38);border-radius:24px;padding:22px;margin-bottom:18px}
+.training-theme-month{height:90px;border-radius:18px;background:rgba(28,173,82,.18);display:grid;place-items:center;text-transform:uppercase;font-weight:900;color:#65e58e}
+.training-theme-card small{color:#65e58e;font-weight:900;letter-spacing:.08em}
+.training-theme-card h2{margin:5px 0 7px}
+.training-theme-card p{margin:0;color:#c5d2c8}
+.training-next-date{font-size:1.2rem;font-weight:800;margin-bottom:5px}
+.training-top-grid{margin-bottom:20px}
+.programme-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px}
+.programme-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;gap:7px}
+.programme-card.current{border-color:var(--green);background:#132219}
+.programme-card small{text-transform:uppercase;color:#65e58e;font-weight:800}
+.programme-card strong{font-size:.95rem}
+.programme-card span{color:var(--muted);font-size:.8rem;line-height:1.35}
+.training-doc-list{display:grid;gap:10px}
+.training-doc-card{display:grid;grid-template-columns:58px 1fr auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
+.file-badge{width:50px;height:50px;border-radius:12px;display:grid;place-items:center;background:#173321;color:#6fe897;font-size:.72rem;font-weight:900}
+.training-doc-main h4{margin:0}
+.training-doc-actions{display:flex;gap:7px}
+
+@media(max-width:760px){
+  .calendar-toolbar-v9{display:grid;grid-template-columns:1fr}
+  .calendar-toolbar-v9 .toolbar-group{display:grid;grid-template-columns:repeat(3,1fr)}
+  .calendar-toolbar-v9 .toolbar-group:last-child{grid-template-columns:1fr 1fr 1.2fr}
+  .calendar-month-title{text-align:center;font-size:1.1rem}
+  .agenda-day{grid-template-columns:54px 1fr;padding:9px;gap:9px}
+  .agenda-date strong{font-size:1.55rem}
+  .agenda-event{padding:10px}
+  .agenda-event-top{align-items:flex-start;flex-direction:column;gap:2px}
+  .calendar-legend{justify-content:center}
+  .training-theme-card{grid-template-columns:1fr;padding:16px}
+  .training-theme-month{height:50px}
+  .training-top-grid{grid-template-columns:1fr}
+  .programme-strip{grid-template-columns:1fr}
+  .training-doc-card{grid-template-columns:48px 1fr}
+  .training-doc-actions{grid-column:1/-1}
+  .training-doc-actions .btn{flex:1}
+}
