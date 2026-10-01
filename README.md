@@ -169,3 +169,15 @@ Exécuter une fois `supabase/UPGRADE_SONDAGES_V13.sql`.
 - réponse modifiable tant que le sondage est ouvert ;
 - sondage en cours mis en avant sur l'accueil parent ;
 - les sondages clôturés restent consultables mais ne sont plus modifiables.
+
+
+## v14 — Installation PWA simplifiée pour les parents
+Aucun SQL supplémentaire.
+
+Lorsqu'un parent ouvre le lien sur smartphone sans avoir installé l'application :
+- **Android** : un écran très simple propose le vrai bouton `Installer l'application` quand Chrome le permet ;
+- **iPhone** : l'application explique visuellement les 4 étapes Safari → Partager → Sur l'écran d'accueil → Ajouter ;
+- une fois l'aide fermée ou l'application installée, elle ne réapparaît plus automatiquement ;
+- le bouton `Installer l'application` reste disponible dans le menu pour revoir les instructions.
+
+L'aide ne s'affiche pas quand l'application est déjà ouverte en mode PWA.

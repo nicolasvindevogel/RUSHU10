@@ -24,8 +24,101 @@ function setBusy(btn, busy, label='Enregistrement…'){ if(!btn)return; if(busy)
 function openModal(html){ $('#modalBody').innerHTML=html; $('#modal').classList.remove('hidden'); }
 function closeModal(){ $('#modal').classList.add('hidden'); $('#modalBody').innerHTML=''; }
 
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); state.installPrompt=e; $('#installBtn')?.classList.remove('hidden'); });
-$('#installBtn')?.addEventListener('click', async()=>{ if(state.installPrompt){ state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt=null; $('#installBtn').classList.add('hidden'); }});
+function isIOS(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+}
+function isAndroid(){ return /android/i.test(navigator.userAgent); }
+function isStandalonePWA(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+}
+function installHelpKey(){ return 'u10-install-help-dismissed-v14'; }
+
+function showInstallOnboarding(force=false){
+  if(isStandalonePWA()) return;
+  if(!force && localStorage.getItem(installHelpKey())==='1') return;
+
+  const box=$('#installOnboarding');
+  const body=$('#installOnboardingBody');
+  if(!box||!body) return;
+
+  if(isIOS()){
+    body.innerHTML=`
+      <div class="install-kicker">INSTALLER L'APPLICATION</div>
+      <h2>Ajoutez U10 Herseaux sur votre iPhone</h2>
+      <p class="install-lead">Cela prend moins d'une minute et l'application s'ouvrira ensuite comme une vraie app.</p>
+      <div class="install-steps">
+        <div class="install-step"><span>1</span><div><strong>Ouvrez ce lien dans Safari</strong><small>Si vous êtes déjà dans Safari, passez directement à l'étape 2.</small></div></div>
+        <div class="install-step"><span>2</span><div><strong>Appuyez sur le bouton Partager</strong><small>L'icône carré avec une flèche vers le haut.</small></div></div>
+        <div class="install-step"><span>3</span><div><strong>Choisissez “Sur l'écran d'accueil”</strong><small>Faites défiler le menu si l'option n'est pas visible tout de suite.</small></div></div>
+        <div class="install-step"><span>4</span><div><strong>Appuyez sur “Ajouter”</strong><small>Vous verrez ensuite l'icône U10 Herseaux sur votre écran.</small></div></div>
+      </div>
+      <div class="install-tip">💡 Ensuite, ouvrez toujours U10 Herseaux depuis son icône. C'est également nécessaire pour les notifications sur iPhone.</div>
+      <button class="btn primary full" id="installUnderstood">J'ai compris</button>`;
+  }else if(isAndroid()){
+    body.innerHTML=`
+      <div class="install-kicker">INSTALLER L'APPLICATION</div>
+      <h2>Installez U10 Herseaux sur votre téléphone</h2>
+      <p class="install-lead">Une fois installée, l'application apparaîtra avec vos autres apps.</p>
+      ${state.installPrompt
+        ? `<button class="btn primary full install-big-button" id="installNow">📲 Installer l'application</button>
+           <p class="install-center-note">Appuyez simplement sur le bouton ci-dessus puis confirmez.</p>`
+        : `<div class="install-steps">
+            <div class="install-step"><span>1</span><div><strong>Ouvrez ce lien dans Chrome</strong></div></div>
+            <div class="install-step"><span>2</span><div><strong>Appuyez sur ⋮ en haut à droite</strong></div></div>
+            <div class="install-step"><span>3</span><div><strong>Choisissez “Ajouter à l'écran d'accueil” ou “Installer l'application”</strong></div></div>
+          </div>
+          <button class="btn primary full" id="installUnderstood">J'ai compris</button>`}
+    `;
+  }else{
+    body.innerHTML=`
+      <div class="install-kicker">APPLICATION U10 HERSEAUX</div>
+      <h2>Installez l'application sur votre téléphone</h2>
+      <p class="install-lead">Pour un accès plus simple, ouvrez ce lien depuis votre smartphone et suivez les instructions proposées.</p>
+      <button class="btn primary full" id="installUnderstood">J'ai compris</button>`;
+  }
+
+  box.classList.remove('hidden');
+  box.setAttribute('aria-hidden','false');
+
+  $('#installNow')?.addEventListener('click', installPWA);
+  $('#installUnderstood')?.addEventListener('click', dismissInstallOnboarding);
+}
+
+function dismissInstallOnboarding(){
+  localStorage.setItem(installHelpKey(),'1');
+  $('#installOnboarding')?.classList.add('hidden');
+  $('#installOnboarding')?.setAttribute('aria-hidden','true');
+}
+async function installPWA(){
+  if(!state.installPrompt){
+    return showInstallOnboarding(true);
+  }
+  const prompt=state.installPrompt;
+  prompt.prompt();
+  const choice=await prompt.userChoice;
+  if(choice?.outcome==='accepted'){
+    localStorage.setItem(installHelpKey(),'1');
+    $('#installOnboarding')?.classList.add('hidden');
+    $('#installBtn')?.classList.add('hidden');
+    state.installPrompt=null;
+    toast("Installation lancée.");
+  }
+}
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  state.installPrompt=e;
+  $('#installBtn')?.classList.remove('hidden');
+});
+window.addEventListener('appinstalled',()=>{
+  localStorage.setItem(installHelpKey(),'1');
+  $('#installOnboarding')?.classList.add('hidden');
+  $('#installBtn')?.classList.add('hidden');
+  state.installPrompt=null;
+});
+$('#installBtn')?.addEventListener('click', ()=>showInstallOnboarding(true));
+$('#installOnboardingClose')?.addEventListener('click',dismissInstallOnboarding);
+$('#installOnboarding')?.addEventListener('click',e=>{ if(e.target.id==='installOnboarding') dismissInstallOnboarding(); });
 $('#modalClose').addEventListener('click',closeModal); $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
 window.addEventListener('online',()=>$('#syncState').textContent='● En ligne');
 window.addEventListener('offline',()=>$('#syncState').textContent='● Hors ligne');
@@ -161,6 +254,9 @@ async function init(){
   sb.auth.onAuthStateChange(async(_e,session)=>{
     if(session?.user && session.user.id!==state.user?.id) await loadUser(session.user);
   });
+
+  // Petit délai pour laisser la page se charger avant d'expliquer l'installation.
+  setTimeout(()=>showInstallOnboarding(false),900);
 }
 
 async function loadUser(user){
@@ -773,14 +869,6 @@ async function openCoachConversation(id,conv){
     $('#coachChatInput').value='';
     await openCoachConversation(id,conv);
   };
-}
-
-function isIOS(){
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
-}
-function isStandalonePWA(){
-  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
 }
 
 async function requestNotifications(){

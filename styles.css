@@ -432,3 +432,124 @@
   .poll-home-card{align-items:stretch;flex-direction:column}
   .poll-home-card .btn{width:100%}
 }
+
+
+/* === v14 Parcours installation simplifié === */
+.install-onboarding{
+  position:fixed;
+  inset:0;
+  z-index:2000;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(3,8,5,.86);
+  backdrop-filter:blur(8px);
+}
+.install-onboarding.hidden{display:none}
+.install-onboarding-card{
+  position:relative;
+  width:min(100%,520px);
+  max-height:92dvh;
+  overflow:auto;
+  background:#111713;
+  border:1px solid rgba(28,173,82,.4);
+  border-radius:24px;
+  padding:22px;
+  box-shadow:0 24px 70px rgba(0,0,0,.45);
+}
+.install-onboarding-close{
+  position:absolute;
+  top:10px;
+  right:10px;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  border:1px solid var(--line);
+  background:#171f19;
+  color:#fff;
+  font-size:1.3rem;
+  cursor:pointer;
+}
+.install-onboarding-logo{
+  width:76px;
+  height:76px;
+  object-fit:contain;
+  display:block;
+  margin:0 auto 10px;
+}
+.install-kicker{
+  text-align:center;
+  color:#6ee995;
+  font-weight:900;
+  font-size:.72rem;
+  letter-spacing:.08em;
+}
+.install-onboarding-card h2{
+  text-align:center;
+  margin:7px 25px 8px;
+  font-size:1.35rem;
+}
+.install-lead{
+  text-align:center;
+  color:var(--muted);
+  line-height:1.45;
+  margin:0 0 18px;
+}
+.install-steps{
+  display:grid;
+  gap:10px;
+  margin:15px 0 18px;
+}
+.install-step{
+  display:grid;
+  grid-template-columns:38px 1fr;
+  gap:10px;
+  align-items:center;
+  background:rgba(255,255,255,.035);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+}
+.install-step>span{
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#1cad52;
+  color:white;
+  font-weight:900;
+}
+.install-step div{display:grid;gap:2px}
+.install-step strong{font-size:.9rem}
+.install-step small{color:var(--muted);line-height:1.35}
+.install-tip{
+  background:rgba(28,173,82,.1);
+  border:1px solid rgba(28,173,82,.28);
+  border-radius:13px;
+  padding:11px;
+  font-size:.82rem;
+  line-height:1.45;
+  margin:14px 0;
+}
+.install-big-button{
+  font-size:1rem;
+  padding:14px !important;
+  margin:14px 0 8px;
+}
+.install-center-note{
+  text-align:center;
+  color:var(--muted);
+  font-size:.78rem;
+}
+@media(max-width:600px){
+  .install-onboarding{padding:10px}
+  .install-onboarding-card{
+    border-radius:20px;
+    padding:18px 14px 16px;
+  }
+  .install-onboarding-logo{width:64px;height:64px}
+  .install-onboarding-card h2{font-size:1.17rem;margin-left:26px;margin-right:26px}
+  .install-step{grid-template-columns:34px 1fr;padding:9px}
+  .install-step>span{width:30px;height:30px}
+}
