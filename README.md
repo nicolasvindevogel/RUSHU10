@@ -124,3 +124,11 @@ Pour recevoir de vraies notifications push lorsque l'application est totalement 
 
 ### Correction
 `THERY Thibault` remplace `THERY Thibaut`.
+
+
+## v11 — Messagerie coach compacte + iPhone
+- liste des conversations coach plus compacte ;
+- polices, avatars, bulles et boutons réduits ;
+- sur smartphone, ouverture d'une conversation en plein écran avec bouton retour ;
+- explication spécifique iPhone pour les notifications ;
+- sur iPhone, l'application doit être ajoutée à l'écran d'accueil puis ouverte depuis son icône pour demander la permission Web Push (iOS 16.4+).

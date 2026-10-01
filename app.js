@@ -602,7 +602,7 @@ async function renderCoachMessages(){
   $('#content').innerHTML=`
     <div class="coach-message-layout">
       <div class="conversation-list">
-        <div class="conversation-list-head"><strong>Conversations parents</strong><button class="btn ghost small" id="coachNotif">🔔</button></div>
+        <div class="conversation-list-head"><strong>Messages parents</strong><button class="btn ghost small compact-notif" id="coachNotif" title="Notifications">🔔</button></div>
         ${conversations.length?conversations.map(c=>{
           const last=latest[c.id];
           return `<button class="conversation-item" data-conversation="${c.id}">
@@ -621,15 +621,24 @@ async function renderCoachMessages(){
 
 async function openCoachConversation(id,conv){
   const messages=await loadConversationMessages(id);
+  const layout=$('.coach-message-layout');
+  layout?.classList.add('chat-open');
   $('#coachChatPanel').innerHTML=`
     <div class="chat-shell coach-chat">
-      <div class="chat-header"><div><strong>${esc(conv?.players?.first_name||'Joueur')}</strong><small>Conversation parent ↔ staff U10</small></div></div>
+      <div class="chat-header coach-chat-header">
+        <button class="icon-btn coach-chat-back" id="coachChatBack" aria-label="Retour">←</button>
+        <div>
+          <strong>${esc(conv?.players?.first_name||'Joueur')}</strong>
+          <small>Parent ↔ les 3 coachs U10</small>
+        </div>
+      </div>
       <div class="chat-messages" id="chatMessages">${messages.map(messageBubble).join('')||'<div class="chat-empty">Aucun message.</div>'}</div>
       <form class="chat-compose" id="coachChatForm">
-        <textarea id="coachChatInput" rows="1" placeholder="Répondre au parent…" required></textarea>
+        <textarea id="coachChatInput" rows="1" placeholder="Répondre…" required></textarea>
         <button class="btn primary">Envoyer</button>
       </form>
     </div>`;
+  $('#coachChatBack').onclick=()=>renderCoachMessages();
   const box=$('#chatMessages');box.scrollTop=box.scrollHeight;
   $('#coachChatForm').onsubmit=async e=>{
     e.preventDefault();
@@ -649,10 +658,45 @@ async function openCoachConversation(id,conv){
   };
 }
 
+function isIOS(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+}
+function isStandalonePWA(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+}
+
 async function requestNotifications(){
-  if(!('Notification' in window))return toast("Les notifications ne sont pas prises en charge sur ce téléphone.",false);
+  if(isIOS() && !isStandalonePWA()){
+    openModal(`
+      <h2>🔔 Notifications sur iPhone</h2>
+      <p>Sur iPhone, les notifications Web ne sont disponibles que lorsque <strong>U10 Herseaux est installée sur l’écran d’accueil</strong> et ouverte depuis son icône.</p>
+      <div class="panel stack">
+        <strong>Installation :</strong>
+        <span>1. Ouvrez le site dans Safari.</span>
+        <span>2. Appuyez sur <strong>Partager</strong>.</span>
+        <span>3. Choisissez <strong>Sur l’écran d’accueil</strong>.</span>
+        <span>4. Ouvrez ensuite U10 Herseaux depuis l’icône créée.</span>
+        <span>5. Revenez sur ce bouton pour autoriser les notifications.</span>
+      </div>
+      <p class="muted">iOS 16.4 ou une version plus récente est nécessaire.</p>
+    `);
+    return;
+  }
+
+  if(!('Notification' in window)){
+    return toast("Les notifications ne sont pas disponibles dans ce mode. Sur iPhone, ouvrez l'application installée depuis l'écran d'accueil.",false);
+  }
+
+  if(Notification.permission==='granted'){
+    return toast('Notifications déjà activées.');
+  }
+  if(Notification.permission==='denied'){
+    return toast("Les notifications sont bloquées. Vérifiez Réglages > Notifications > U10 Herseaux.",false);
+  }
+
   const perm=await Notification.requestPermission();
-  if(perm==='granted')toast('Notifications activées');
+  if(perm==='granted') toast('Notifications activées.');
   else toast("Notifications non autorisées.",false);
 }
 
