@@ -418,3 +418,20 @@ $$;
 grant execute on function public.identity_login_status(text) to authenticated;
 grant execute on function public.activate_identity(text,text) to authenticated;
 grant execute on function public.login_identity(text,text) to authenticated;
+
+
+-- Matchs / compositions
+alter table public.events add column if not exists match_kind text;
+create table if not exists public.match_players (
+  event_id uuid not null references public.events(id) on delete cascade,
+  player_id uuid not null references public.players(id) on delete cascade,
+  position_order integer,
+  selected_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  primary key(event_id,player_id)
+);
+alter table public.match_players enable row level security;
+drop policy if exists match_players_select on public.match_players;
+drop policy if exists match_players_coach_all on public.match_players;
+create policy match_players_select on public.match_players for select to authenticated using(public.is_team_member(public.event_team(event_id)));
+create policy match_players_coach_all on public.match_players for all to authenticated using(public.is_team_coach(public.event_team(event_id))) with check(public.is_team_coach(public.event_team(event_id)) and public.player_team(player_id)=public.event_team(event_id));

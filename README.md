@@ -25,3 +25,14 @@ Le fichier `config.js` contient déjà :
 - la publishable key fournie.
 
 Le fichier `SETUP_COACH.sql` corrige également le problème `function crypt(text,text) does not exist` en utilisant explicitement l'extension `pgcrypto`.
+
+
+## Mise à jour Présences + Matchs
+Exécuter une fois `supabase/UPGRADE_PRESENCES_MATCHS.sql`.
+
+Cette mise à jour ajoute :
+- calendrier pré-rempli tous les mardis, jeudis et samedis jusqu'au 30/06/2027 ;
+- double écran de présences (prévisions parents / présence réelle coach) ;
+- type de match Championnat / Amical ;
+- compositions de match ;
+- génération d'un visuel PNG du match avec les joueurs convoqués.

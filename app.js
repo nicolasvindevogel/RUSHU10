@@ -3,7 +3,7 @@ const cfg = window.APP_CONFIG || {};
 const configured = cfg.SUPABASE_URL && !cfg.SUPABASE_URL.includes('VOTRE-PROJET') && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes('VOTRE_CLE');
 const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
 
-const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null };
+const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null };
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -23,14 +23,45 @@ window.addEventListener('online',()=>$('#syncState').textContent='● En ligne')
 window.addEventListener('offline',()=>$('#syncState').textContent='● Hors ligne');
 
 const NAV_COACH = [
-  ['dashboard','⌂','Tableau de bord'],['calendar','▦','Calendrier'],['attendance','✓','Présences'],['players','⚽','Joueurs'],['evaluations','★','Évaluations'],['settings','⚙','Paramètres']
+  ['dashboard','⌂','Tableau de bord'],
+  ['calendar','▦','Calendrier'],
+  ['attendance','✓','Présences'],
+  ['matches','⚽','Matchs'],
+  ['players','👥','Joueurs'],
+  ['evaluations','★','Évaluations'],
+  ['settings','⚙','Paramètres']
 ];
 const isCoach = () => state.membership?.role === 'coach';
 
 function setView(which){ ['authView','appView'].forEach(id=>$('#'+id)?.classList.add('hidden')); $('#'+which)?.classList.remove('hidden'); }
-function pageMeta(page){ const m={dashboard:['Tableau de bord','Vue d’ensemble de l’équipe'],calendar:['Calendrier','Entraînements, matchs et tournois'],attendance:['Présences','Disponibilités parents et présence réelle'],players:['Joueurs','Effectif et accès parents'],evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],settings:['Paramètres','Compte et accès à l’équipe']}; return m[page]||m.dashboard; }
+function pageMeta(page){
+  const m={
+    dashboard:['Tableau de bord','Vue d’ensemble de l’équipe'],
+    calendar:['Calendrier','Entraînements, matchs et tournois'],
+    attendance:['Présences','Prévisions parents et présence réelle'],
+    matches:['Matchs','Championnat, amicaux, compositions et visuels'],
+    players:['Joueurs','Effectif U10'],
+    evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],
+    settings:['Paramètres','Compte et accès à l’équipe']
+  };
+  return m[page]||m.dashboard;
+}
 function renderNav(){ const nav=NAV_COACH; $('#nav').innerHTML=nav.map(([id,ic,lab])=>`<button class="nav-btn ${state.page===id?'active':''}" data-page="${id}"><span class="nav-icon">${ic}</span>${lab}</button>`).join(''); $$('#nav .nav-btn').forEach(b=>b.onclick=()=>go(b.dataset.page)); }
-async function go(page){ state.page=page; renderNav(); const [t,s]=pageMeta(page); $('#pageTitle').textContent=t; $('#pageSubtitle').textContent=s; $('#sidebar').classList.remove('open'); if(page==='dashboard') await renderDashboard(); if(page==='calendar') await renderCalendar(); if(page==='attendance') await renderAttendance(); if(page==='players') await renderPlayers(); if(page==='evaluations') await renderEvaluations(); if(page==='settings') await renderSettings(); }
+async function go(page){
+  state.page=page;
+  renderNav();
+  const [t,s]=pageMeta(page);
+  $('#pageTitle').textContent=t;
+  $('#pageSubtitle').textContent=s;
+  $('#sidebar').classList.remove('open');
+  if(page==='dashboard') await renderDashboard();
+  if(page==='calendar') await renderCalendar();
+  if(page==='attendance') await renderAttendance();
+  if(page==='matches') await renderMatches();
+  if(page==='players') await renderPlayers();
+  if(page==='evaluations') await renderEvaluations();
+  if(page==='settings') await renderSettings();
+}
 
 const COACH_KEYS = new Set(['coach-nicolas','coach-thibaut','coach-maxime']);
 
@@ -230,24 +261,444 @@ async function renderDashboard(){
   html+=`<div class="section-head"><h3>Prochains rendez-vous</h3>${isCoach()?'<button class="btn primary small" id="addEventDash">+ Ajouter</button>':''}</div><div class="event-list">${upcoming.length?upcoming.map(eventCard).join(''):'<div class="empty panel">Aucun événement à venir.</div>'}</div>`;
   $('#content').innerHTML=html; $('#addEventDash')?.addEventListener('click',()=>eventModal()); bindEventButtons();
 }
-function eventCard(e){ const opponent=e.opponent?` · vs ${esc(e.opponent)}`:''; return `<div class="event-card"><div class="event-title"><h4>${esc(e.title)}</h4>${eventTypePill(e.type)}</div><div class="event-meta"><span>📅 ${fmtLong(e.event_date)}</span><span>🕒 ${timeShort(e.start_time)}</span>${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}${e.location?`<span>📍 ${esc(e.location)}</span>`:''}${opponent}</div>${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}<div class="event-actions"><button class="btn ghost small" data-event-presence="${e.id}">Présences</button>${isCoach()?`<button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>`:''}</div></div>`; }
-function bindEventButtons(){ $$('[data-event-presence]').forEach(b=>b.onclick=()=>{state.selectedEvent=b.dataset.eventPresence;go('attendance')}); $$('[data-edit-event]').forEach(b=>b.onclick=()=>eventModal(state.events.find(e=>e.id===b.dataset.editEvent))); }
+function eventCard(e){
+  const opponent=e.opponent?` · vs ${esc(e.opponent)}`:'';
+  const when=timeShort(e.start_time)||'Heure à préciser';
+  return `<div class="event-card">
+    <div class="event-title"><h4>${esc(e.title)}</h4>${eventTypePill(e.type)}</div>
+    <div class="event-meta">
+      <span>📅 ${fmtLong(e.event_date)}</span><span>🕒 ${when}</span>
+      ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
+      ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}${opponent}
+    </div>
+    ${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}
+    <div class="event-actions">
+      <button class="btn ghost small" data-event-presence="${e.id}">Présences</button>
+      ${e.type==='match'?`<button class="btn ghost small" data-match-lineup="${e.id}">Composition</button>`:''}
+      ${isCoach()?`<button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>`:''}
+    </div>
+  </div>`;
+}
+function bindEventButtons(){
+  $$('[data-event-presence]').forEach(b=>b.onclick=()=>{
+    state.selectedEvent=b.dataset.eventPresence;
+    state.attendanceTab='coach';
+    go('attendance');
+  });
+  $$('[data-edit-event]').forEach(b=>b.onclick=()=>eventModal(state.events.find(e=>e.id===b.dataset.editEvent)));
+  $$('[data-match-lineup]').forEach(b=>b.onclick=()=>matchLineupModal(state.events.find(e=>e.id===b.dataset.matchLineup)));
+}
 
-async function renderCalendar(){ await loadCore(); const d=state.month; const y=d.getFullYear(),m=d.getMonth(); $('#content').innerHTML=`<div class="calendar-toolbar"><div class="toolbar-group"><button class="btn ghost small" id="prevMonth">←</button><button class="btn ghost small" id="todayMonth">Aujourd'hui</button><button class="btn ghost small" id="nextMonth">→</button></div><strong>${new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(d)}</strong>${isCoach()?'<button class="btn primary small" id="addEvent">+ Événement</button>':'<span></span>'}</div>${calendarHTML(y,m)}<div class="section-head"><h3>Événements du mois</h3></div><div class="event-list">${state.events.filter(e=>{const x=new Date(e.event_date+'T12:00:00');return x.getFullYear()===y&&x.getMonth()===m}).map(eventCard).join('')||'<div class="empty panel">Aucun événement.</div>'}</div>`;
-  $('#prevMonth').onclick=()=>{state.month=new Date(y,m-1,1);renderCalendar()}; $('#nextMonth').onclick=()=>{state.month=new Date(y,m+1,1);renderCalendar()}; $('#todayMonth').onclick=()=>{state.month=new Date();renderCalendar()}; $('#addEvent')?.addEventListener('click',()=>eventModal()); bindEventButtons();
-}
-function calendarHTML(y,m){ const first=new Date(y,m,1), start=new Date(y,m,1-((first.getDay()+6)%7)); let cells=''; const names=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']; for(let i=0;i<42;i++){ const dd=new Date(start);dd.setDate(start.getDate()+i); const iso=[dd.getFullYear(),String(dd.getMonth()+1).padStart(2,'0'),String(dd.getDate()).padStart(2,'0')].join('-'); const evs=state.events.filter(e=>e.event_date===iso); cells+=`<div class="cal-day ${dd.getMonth()!==m?'other':''}"><span class="day-num">${dd.getDate()}</span>${evs.map(e=>`<span class="cal-event ${e.type}" title="${esc(e.title)}">${timeShort(e.start_time)} ${esc(e.title)}</span>`).join('')}</div>`; } return `<div class="calendar">${names.map(n=>`<div class="cal-head">${n}</div>`).join('')}${cells}</div>`; }
-function eventModal(e=null){ openModal(`<h2>${e?'Modifier':'Ajouter'} un événement</h2><form id="eventForm" class="form-grid"><label>Type<select id="evType"><option value="training">Entraînement</option><option value="match">Match</option><option value="tournament">Tournoi</option><option value="other">Autre</option></select></label><label>Titre<input id="evTitle" required value="${esc(e?.title||'')}" placeholder="Ex. Entraînement U10" /></label><label>Date<input id="evDate" type="date" required value="${e?.event_date||todayISO()}" /></label><label>Heure début<input id="evStart" type="time" required value="${timeShort(e?.start_time)||'18:00'}" /></label><label>Heure fin<input id="evEnd" type="time" value="${timeShort(e?.end_time)}" /></label><label>Heure de rendez-vous<input id="evMeet" type="time" value="${timeShort(e?.meeting_time)}" /></label><label>Lieu<input id="evLocation" value="${esc(e?.location||'')}" /></label><label>Adversaire<input id="evOpponent" value="${esc(e?.opponent||'')}" /></label><label class="full">Adresse<input id="evAddress" value="${esc(e?.address||'')}" /></label><label class="full">Informations<textarea id="evNotes">${esc(e?.notes||'')}</textarea></label><div class="full" style="display:flex;gap:8px;justify-content:flex-end">${e?'<button type="button" id="deleteEvent" class="btn danger">Supprimer</button>':''}<button class="btn primary">Enregistrer</button></div></form>`); $('#evType').value=e?.type||'training';
-  $('#eventForm').onsubmit=async ev=>{ev.preventDefault();const btn=ev.submitter;setBusy(btn,true);const payload={team_id:state.team.id,type:$('#evType').value,title:$('#evTitle').value.trim(),event_date:$('#evDate').value,start_time:$('#evStart').value||null,end_time:$('#evEnd').value||null,meeting_time:$('#evMeet').value||null,location:$('#evLocation').value.trim()||null,address:$('#evAddress').value.trim()||null,opponent:$('#evOpponent').value.trim()||null,notes:$('#evNotes').value.trim()||null,created_by:state.user.id}; let q=e?sb.from('events').update(payload).eq('id',e.id):sb.from('events').insert(payload); const {error}=await q;setBusy(btn,false);if(error)return toast(error.message,false);closeModal();toast('Événement enregistré');await loadCore();await go(state.page)};
-  $('#deleteEvent')?.addEventListener('click',async()=>{if(!confirm('Supprimer cet événement ?'))return;const {error}=await sb.from('events').delete().eq('id',e.id);if(error)return toast(error.message,false);closeModal();toast('Événement supprimé');await loadCore();await go(state.page)});
+async function renderCalendar(){
+  await loadCore();
+  const d=state.month;
+  const y=d.getFullYear(),m=d.getMonth();
+  const monthEvents=state.events.filter(e=>{
+    const x=new Date(e.event_date+'T12:00:00');
+    return x.getFullYear()===y&&x.getMonth()===m;
+  });
+  $('#content').innerHTML=`
+    <div class="calendar-toolbar">
+      <div class="toolbar-group">
+        <button class="btn ghost small" id="prevMonth">←</button>
+        <button class="btn ghost small" id="todayMonth">Aujourd'hui</button>
+        <button class="btn ghost small" id="nextMonth">→</button>
+      </div>
+      <strong>${new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(d)}</strong>
+      <button class="btn primary small" id="addEvent">+ Événement</button>
+    </div>
+    ${calendarHTML(y,m)}
+    <div class="section-head"><h3>Événements du mois</h3></div>
+    <div class="event-list">${monthEvents.map(eventCard).join('')||'<div class="empty panel">Aucun événement.</div>'}</div>`;
+  $('#prevMonth').onclick=()=>{state.month=new Date(y,m-1,1);renderCalendar()};
+  $('#nextMonth').onclick=()=>{state.month=new Date(y,m+1,1);renderCalendar()};
+  $('#todayMonth').onclick=()=>{state.month=new Date();renderCalendar()};
+  $('#addEvent').onclick=()=>eventModal();
+  $$('[data-cal-event]').forEach(b=>b.onclick=()=>eventModal(state.events.find(e=>e.id===b.dataset.calEvent)));
+  bindEventButtons();
 }
 
-async function renderAttendance(){ await loadCore(); const upcoming=state.events.filter(e=>e.event_date>=new Date(Date.now()-7*86400000).toISOString().slice(0,10)); const selected=state.selectedEvent||upcoming[0]?.id||state.events.at(-1)?.id; state.selectedEvent=selected; if(!selected){$('#content').innerHTML='<div class="empty panel">Crée d’abord un événement.</div>';return;} const e=state.events.find(x=>x.id===selected); const opts=state.events.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${x.event_date} · ${esc(x.title)}</option>`).join(''); let html=`<div class="panel"><div class="form-grid"><label>Événement<select id="attendanceEvent">${opts}</select></label><div><strong>${esc(e.title)}</strong><div class="muted">${fmtLong(e.event_date)} · ${timeShort(e.start_time)} ${e.location?'· '+esc(e.location):''}</div></div></div></div>`;
-  if(isCoach()) html+=await coachAttendanceHTML(e); else html+=await parentAttendanceHTML(e); $('#content').innerHTML=html; $('#attendanceEvent').onchange=ev=>{state.selectedEvent=ev.target.value;renderAttendance()}; bindAttendance();
+function calendarHTML(y,m){
+  const first=new Date(y,m,1), start=new Date(y,m,1-((first.getDay()+6)%7));
+  let cells='';
+  const names=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  for(let i=0;i<42;i++){
+    const dd=new Date(start);
+    dd.setDate(start.getDate()+i);
+    const iso=[dd.getFullYear(),String(dd.getMonth()+1).padStart(2,'0'),String(dd.getDate()).padStart(2,'0')].join('-');
+    const evs=state.events.filter(e=>e.event_date===iso);
+    cells+=`<div class="cal-day ${dd.getMonth()!==m?'other':''}">
+      <span class="day-num">${dd.getDate()}</span>
+      ${evs.map(e=>`<button type="button" class="cal-event ${e.type}" data-cal-event="${e.id}" title="Cliquer pour modifier">${timeShort(e.start_time)||''} ${esc(e.title)}</button>`).join('')}
+    </div>`;
+  }
+  return `<div class="calendar">${names.map(n=>`<div class="cal-head">${n}</div>`).join('')}${cells}</div>`;
 }
-async function coachAttendanceHTML(e){ const [{data:avail},{data:actual}]=await Promise.all([sb.from('availability').select('*').eq('event_id',e.id),sb.from('attendance').select('*').eq('event_id',e.id)]); const am=new Map((avail||[]).map(x=>[x.player_id,x])),tm=new Map((actual||[]).map(x=>[x.player_id,x])); return `<div class="section-head"><h3>Feuille de présence</h3><span class="muted">Réponse parent + présence constatée</span></div><div class="table-wrap"><table><thead><tr><th>Joueur</th><th>Réponse parent</th><th>Commentaire</th><th>Présence réelle</th></tr></thead><tbody>${state.players.map(p=>{const a=am.get(p.id),t=tm.get(p.id);return `<tr><td><strong>${esc(p.first_name)}</strong></td><td>${statusPill(a?.status)}</td><td>${esc(a?.comment||'')}</td><td><div class="presence-toggle" data-actual-player="${p.id}">${[['present','Présent'],['absent','Absent'],['excused','Excusé'],['late','Retard']].map(([v,l])=>`<button data-val="${v}" class="${t?.status===v?'selected '+(v==='present'?'present':v==='absent'?'absent':'maybe'):''}">${l}</button>`).join('')}</div></td></tr>`}).join('')}</tbody></table></div>`; }
-async function parentAttendanceHTML(e){ const {data:links}=await sb.from('player_guardians').select('player_id,players(*)').eq('user_id',state.user.id); if(!links?.length)return `<div class="notice warning">Aucun enfant n'est encore lié à ton compte. Va dans <strong>Mon compte</strong> et utilise le code joueur donné par le coach.</div>`; const ids=links.map(l=>l.player_id); const {data:avail}=await sb.from('availability').select('*').eq('event_id',e.id).in('player_id',ids); const map=new Map((avail||[]).map(x=>[x.player_id,x])); return `<div class="section-head"><h3>Disponibilité</h3><span class="muted">À compléter avant le rendez-vous</span></div><div class="event-list">${links.map(l=>{const a=map.get(l.player_id);return `<div class="event-card"><div class="event-title"><h4>${esc(l.players.first_name)}</h4>${statusPill(a?.status)}</div><div class="presence-toggle" data-parent-player="${l.player_id}">${[['present','Présent'],['absent','Absent'],['maybe','Incertain']].map(([v,lab])=>`<button data-val="${v}" class="${a?.status===v?'selected '+v:''}">${lab}</button>`).join('')}</div><label>Commentaire<input data-comment-player="${l.player_id}" value="${esc(a?.comment||'')}" placeholder="Ex. blessure, retard…" /></label><button class="btn primary small" data-save-parent="${l.player_id}">Enregistrer</button></div>`}).join('')}</div>`; }
-function bindAttendance(){ $$('[data-actual-player] button').forEach(b=>b.onclick=async()=>{const wrap=b.parentElement,pid=wrap.dataset.actualPlayer,status=b.dataset.val;const {error}=await sb.from('attendance').upsert({event_id:state.selectedEvent,player_id:pid,status,marked_by:state.user.id,updated_at:new Date().toISOString()},{onConflict:'event_id,player_id'});if(error)return toast(error.message,false);$$('button',wrap).forEach(x=>x.className='');b.className='selected '+(status==='present'?'present':status==='absent'?'absent':'maybe')}); $$('[data-parent-player] button').forEach(b=>b.onclick=()=>{const wrap=b.parentElement;$$('button',wrap).forEach(x=>x.className='');b.className='selected '+b.dataset.val;wrap.dataset.value=b.dataset.val}); $$('[data-save-parent]').forEach(b=>b.onclick=async()=>{const pid=b.dataset.saveParent,wrap=$(`[data-parent-player="${pid}"]`),status=wrap.dataset.value||$('.selected',wrap)?.dataset.val;if(!status)return toast('Choisis Présent, Absent ou Incertain.',false);const comment=$(`[data-comment-player="${pid}"]`).value.trim();setBusy(b,true);const {error}=await sb.from('availability').upsert({event_id:state.selectedEvent,player_id:pid,status,comment,set_by:state.user.id,updated_at:new Date().toISOString()},{onConflict:'event_id,player_id'});setBusy(b,false);if(error)return toast(error.message,false);toast('Disponibilité enregistrée');renderAttendance()}); }
+
+function eventModal(e=null){
+  openModal(`<h2>${e?'Modifier':'Ajouter'} un événement</h2>
+  <form id="eventForm" class="form-grid">
+    <label>Type
+      <select id="evType">
+        <option value="training">Entraînement</option>
+        <option value="match">Match</option>
+        <option value="tournament">Tournoi</option>
+        <option value="other">Autre</option>
+      </select>
+    </label>
+    <label>Titre<input id="evTitle" required value="${esc(e?.title||'')}" placeholder="Ex. Entraînement U10" /></label>
+    <label>Date<input id="evDate" type="date" required value="${e?.event_date||todayISO()}" /></label>
+    <label>Heure début<input id="evStart" type="time" value="${timeShort(e?.start_time)}" /></label>
+    <label>Heure fin<input id="evEnd" type="time" value="${timeShort(e?.end_time)}" /></label>
+    <label>Heure de rendez-vous<input id="evMeet" type="time" value="${timeShort(e?.meeting_time)}" /></label>
+    <label>Lieu<input id="evLocation" value="${esc(e?.location||'')}" /></label>
+    <label>Adversaire<input id="evOpponent" value="${esc(e?.opponent||'')}" /></label>
+    <label id="matchKindLabel">Type de match
+      <select id="evMatchKind">
+        <option value="championship">Championnat</option>
+        <option value="friendly">Amical</option>
+      </select>
+    </label>
+    <label class="full">Adresse<input id="evAddress" value="${esc(e?.address||'')}" /></label>
+    <label class="full">Informations<textarea id="evNotes">${esc(e?.notes||'')}</textarea></label>
+    <div class="full" style="display:flex;gap:8px;justify-content:flex-end">
+      ${e?'<button type="button" id="deleteEvent" class="btn danger">Supprimer</button>':''}
+      <button class="btn primary">Enregistrer</button>
+    </div>
+  </form>`);
+  $('#evType').value=e?.type||'training';
+  $('#evMatchKind').value=e?.match_kind||'championship';
+  const syncKind=()=>$('#matchKindLabel').classList.toggle('hidden',$('#evType').value!=='match');
+  $('#evType').onchange=syncKind; syncKind();
+
+  $('#eventForm').onsubmit=async ev=>{
+    ev.preventDefault();
+    const btn=ev.submitter; setBusy(btn,true);
+    const payload={
+      team_id:state.team.id,
+      type:$('#evType').value,
+      title:$('#evTitle').value.trim(),
+      event_date:$('#evDate').value,
+      start_time:$('#evStart').value||null,
+      end_time:$('#evEnd').value||null,
+      meeting_time:$('#evMeet').value||null,
+      location:$('#evLocation').value.trim()||null,
+      address:$('#evAddress').value.trim()||null,
+      opponent:$('#evOpponent').value.trim()||null,
+      notes:$('#evNotes').value.trim()||null,
+      match_kind:$('#evType').value==='match'?$('#evMatchKind').value:null,
+      created_by:state.user.id
+    };
+    let q=e?sb.from('events').update(payload).eq('id',e.id):sb.from('events').insert(payload);
+    const {error}=await q;
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+    closeModal(); toast('Événement enregistré');
+    await loadCore(); await go(state.page);
+  };
+  $('#deleteEvent')?.addEventListener('click',async()=>{
+    if(!confirm('Supprimer cet événement ?'))return;
+    const {error}=await sb.from('events').delete().eq('id',e.id);
+    if(error)return toast(error.message,false);
+    closeModal(); toast('Événement supprimé');
+    await loadCore(); await go(state.page);
+  });
+}
+
+function mondayOf(dateLike){
+  const d=dateLike?new Date(dateLike+'T12:00:00'):new Date();
+  const day=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-day);
+  return new Date(d.getFullYear(),d.getMonth(),d.getDate());
+}
+function isoLocal(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
+function availabilityCell(a){
+  if(!a) return `<span class="availability-box pending">Non rempli</span>`;
+  if(a.status==='present') return `<span class="availability-box present">Présent</span>`;
+  if(a.status==='absent') return `<span class="availability-box absent">Absent</span>`;
+  return `<span class="availability-box maybe">Incertain</span>`;
+}
+
+async function renderAttendance(){
+  await loadCore();
+  $('#content').innerHTML=`
+    <div class="attendance-tabs">
+      <button class="tab-btn ${state.attendanceTab==='parents'?'active':''}" id="tabParents">Prévisions parents</button>
+      <button class="tab-btn ${state.attendanceTab==='coach'?'active':''}" id="tabCoach">Présence coach</button>
+    </div>
+    <div id="attendanceBody"></div>`;
+  $('#tabParents').onclick=()=>{state.attendanceTab='parents';renderAttendance()};
+  $('#tabCoach').onclick=()=>{state.attendanceTab='coach';renderAttendance()};
+  if(state.attendanceTab==='parents') await renderParentForecast();
+  else await renderCoachCheckin();
+}
+
+async function renderParentForecast(){
+  let monday=state.attendanceWeek?mondayOf(state.attendanceWeek):mondayOf();
+  state.attendanceWeek=isoLocal(monday);
+  const tue=isoLocal(addDays(monday,1)), thu=isoLocal(addDays(monday,3)), sat=isoLocal(addDays(monday,5));
+  const wanted=[tue,thu,sat];
+  const weekEvents=state.events.filter(e=>wanted.includes(e.event_date));
+  const tueEvent=weekEvents.find(e=>e.event_date===tue&&e.type==='training');
+  const thuEvent=weekEvents.find(e=>e.event_date===thu&&e.type==='training');
+  const satEvent=weekEvents.find(e=>e.event_date===sat&&e.type==='match');
+  const ids=[tueEvent?.id,thuEvent?.id,satEvent?.id].filter(Boolean);
+  let avail=[];
+  if(ids.length){
+    const {data,error}=await sb.from('availability').select('*').in('event_id',ids);
+    if(error) toast(error.message,false);
+    avail=data||[];
+  }
+  const map=new Map(avail.map(x=>[`${x.event_id}:${x.player_id}`,x]));
+  const commentsFor=(pid)=>{
+    const arr=[
+      tueEvent&&map.get(`${tueEvent.id}:${pid}`),
+      thuEvent&&map.get(`${thuEvent.id}:${pid}`),
+      satEvent&&map.get(`${satEvent.id}:${pid}`)
+    ].filter(x=>x?.comment);
+    return arr.map((x,i)=>esc(x.comment)).join('<br>')||'<span class="muted">—</span>';
+  };
+  const label=(ev,date,base)=>ev?`${base}<small>${fmtDate(date)}</small>`:`${base}<small>${fmtDate(date)} · pas d’événement</small>`;
+  $('#attendanceBody').innerHTML=`
+    <div class="panel week-toolbar">
+      <button class="btn ghost small" id="prevWeek">← Semaine</button>
+      <strong>Semaine du ${fmtLong(isoLocal(monday))}</strong>
+      <button class="btn ghost small" id="nextWeek">Semaine →</button>
+    </div>
+    <div class="section-head">
+      <div><h3>Réponses des parents</h3><span class="muted">Vue de préparation des entraînements et du match</span></div>
+    </div>
+    <div class="table-wrap forecast-table"><table>
+      <thead><tr>
+        <th>Joueur</th>
+        <th>${label(tueEvent,tue,'Mardi')}</th>
+        <th>${label(thuEvent,thu,'Jeudi')}</th>
+        <th>${label(satEvent,sat,'Match')}</th>
+        <th>Remarques</th>
+      </tr></thead>
+      <tbody>${state.players.map(p=>{
+        const a=tueEvent?map.get(`${tueEvent.id}:${p.id}`):null;
+        const b=thuEvent?map.get(`${thuEvent.id}:${p.id}`):null;
+        const c=satEvent?map.get(`${satEvent.id}:${p.id}`):null;
+        return `<tr><td><strong>${esc(p.first_name)}</strong></td>
+          <td>${tueEvent?availabilityCell(a):'<span class="muted">—</span>'}</td>
+          <td>${thuEvent?availabilityCell(b):'<span class="muted">—</span>'}</td>
+          <td>${satEvent?availabilityCell(c):'<span class="muted">—</span>'}</td>
+          <td class="remarks-cell">${commentsFor(p.id)}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  $('#prevWeek').onclick=()=>{state.attendanceWeek=isoLocal(addDays(monday,-7));renderParentForecast()};
+  $('#nextWeek').onclick=()=>{state.attendanceWeek=isoLocal(addDays(monday,7));renderParentForecast()};
+}
+
+async function renderCoachCheckin(){
+  const recent=state.events.filter(e=>e.event_date>=isoLocal(addDays(new Date(),-21))).slice().reverse();
+  const selected=state.selectedEvent||recent[0]?.id||state.events.at(-1)?.id;
+  state.selectedEvent=selected;
+  if(!selected){
+    $('#attendanceBody').innerHTML='<div class="empty panel">Aucun événement disponible.</div>';
+    return;
+  }
+  const e=state.events.find(x=>x.id===selected);
+  const {data:actual,error}=await sb.from('attendance').select('*').eq('event_id',selected);
+  if(error) toast(error.message,false);
+  const presentIds=new Set((actual||[]).filter(x=>x.status==='present').map(x=>x.player_id));
+  const opts=state.events.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${x.event_date} · ${esc(x.title)}</option>`).join('');
+  $('#attendanceBody').innerHTML=`
+    <div class="panel">
+      <div class="form-grid">
+        <label>Entraînement / match<select id="attendanceEvent">${opts}</select></label>
+        <div><strong>${esc(e.title)}</strong><div class="muted">${fmtLong(e.event_date)} · ${timeShort(e.start_time)||'heure à préciser'}</div></div>
+      </div>
+    </div>
+    <div class="section-head">
+      <div><h3>Présence réelle</h3><span class="muted">Touchez un joueur pour le mettre présent. Case vide = absent.</span></div>
+      <div class="toolbar-group"><button class="btn ghost small" id="clearPresence">Tout vider</button><button class="btn primary" id="savePresence">Enregistrer</button></div>
+    </div>
+    <div class="player-check-grid">
+      ${state.players.map(p=>`<button type="button" class="player-check ${presentIds.has(p.id)?'present':''}" data-check-player="${p.id}">
+        <span class="check-dot">${presentIds.has(p.id)?'✓':''}</span><strong>${esc(p.first_name)}</strong>
+      </button>`).join('')}
+    </div>
+    <div class="panel presence-summary"><strong id="presenceCount">${presentIds.size}</strong> présent(s) sur ${state.players.length}</div>`;
+  $('#attendanceEvent').onchange=ev=>{state.selectedEvent=ev.target.value;renderCoachCheckin()};
+  const refreshCount=()=>{$('#presenceCount').textContent=$$('.player-check.present').length};
+  $$('[data-check-player]').forEach(b=>b.onclick=()=>{b.classList.toggle('present');b.querySelector('.check-dot').textContent=b.classList.contains('present')?'✓':'';refreshCount()});
+  $('#clearPresence').onclick=()=>{$$('[data-check-player]').forEach(b=>{b.classList.remove('present');b.querySelector('.check-dot').textContent=''});refreshCount()};
+  $('#savePresence').onclick=async()=>{
+    const btn=$('#savePresence');setBusy(btn,true);
+    const selectedIds=new Set($$('.player-check.present').map(b=>b.dataset.checkPlayer));
+    const rows=state.players.map(p=>({
+      event_id:selected,
+      player_id:p.id,
+      status:selectedIds.has(p.id)?'present':'absent',
+      marked_by:state.user.id,
+      updated_at:new Date().toISOString()
+    }));
+    const {error}=await sb.from('attendance').upsert(rows,{onConflict:'event_id,player_id'});
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+    toast(`Présences enregistrées : ${selectedIds.size} présent(s)`);
+  };
+}
+
+async function renderMatches(){
+  await loadCore();
+  const matches=state.events.filter(e=>e.type==='match').sort((a,b)=>a.event_date.localeCompare(b.event_date));
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div><h3>Matchs U10</h3><span class="muted">Championnat et matchs amicaux</span></div>
+      <button class="btn primary" id="addMatch">+ Ajouter un match</button>
+    </div>
+    <div class="match-list">
+      ${matches.length?matches.map(e=>`
+        <div class="match-card">
+          <div class="match-date"><span>${new Date(e.event_date+'T12:00:00').getDate()}</span><small>${new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(new Date(e.event_date+'T12:00:00'))}</small></div>
+          <div class="match-main">
+            <div class="event-title"><h3>Herseaux ${e.opponent?`- ${esc(e.opponent)}`:''}</h3><span class="match-kind ${e.match_kind==='friendly'?'friendly':''}">${e.match_kind==='friendly'?'Amical':'Championnat'}</span></div>
+            <div class="event-meta">
+              <span>📅 ${fmtLong(e.event_date)}</span>
+              <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
+              ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
+              ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
+            </div>
+          </div>
+          <div class="match-actions">
+            <button class="btn ghost small" data-match-lineup="${e.id}">Composition</button>
+            <button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>
+          </div>
+        </div>`).join(''):'<div class="empty panel">Aucun match.</div>'}
+    </div>`;
+  $('#addMatch').onclick=()=>eventModal({type:'match',title:'Match',event_date:todayISO(),match_kind:'championship'});
+  bindEventButtons();
+}
+
+async function matchLineupModal(match){
+  if(!match)return;
+  const {data:sel,error}=await sb.from('match_players').select('player_id').eq('event_id',match.id);
+  if(error)return toast(error.message,false);
+  const chosen=new Set((sel||[]).map(x=>x.player_id));
+  openModal(`
+    <h2>Composition · ${esc(match.opponent||'Match')}</h2>
+    <p class="muted">${fmtLong(match.event_date)} · ${timeShort(match.start_time)||'heure à préciser'} ${match.location?'· '+esc(match.location):''}</p>
+    <p>Sélectionne les joueurs convoqués.</p>
+    <div class="player-check-grid compact">
+      ${state.players.map(p=>`<button type="button" class="player-check ${chosen.has(p.id)?'present':''}" data-lineup-player="${p.id}">
+        <span class="check-dot">${chosen.has(p.id)?'✓':''}</span><strong>${esc(p.first_name)}</strong>
+      </button>`).join('')}
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="saveLineup">Enregistrer la composition</button>
+      <button class="btn primary" id="generateMatchImage">Générer l'image</button>
+    </div>
+    <div id="matchImageArea"></div>`);
+  $$('[data-lineup-player]').forEach(b=>b.onclick=()=>{b.classList.toggle('present');b.querySelector('.check-dot').textContent=b.classList.contains('present')?'✓':''});
+  $('#saveLineup').onclick=()=>saveLineup(match.id);
+  $('#generateMatchImage').onclick=async()=>{
+    const ok=await saveLineup(match.id,true);
+    if(ok!==false) await generateMatchImage(match);
+  };
+}
+
+async function saveLineup(matchId,silent=false){
+  const btn=$('#saveLineup');
+  if(btn)setBusy(btn,true);
+  const ids=$$('[data-lineup-player].present').map(b=>b.dataset.lineupPlayer);
+  const {error:delError}=await sb.from('match_players').delete().eq('event_id',matchId);
+  if(delError){if(btn)setBusy(btn,false);toast(delError.message,false);return false}
+  if(ids.length){
+    const rows=ids.map((pid,i)=>({event_id:matchId,player_id:pid,position_order:i+1,selected_by:state.user.id}));
+    const {error}=await sb.from('match_players').insert(rows);
+    if(error){if(btn)setBusy(btn,false);toast(error.message,false);return false}
+  }
+  if(btn)setBusy(btn,false);
+  if(!silent)toast(`Composition enregistrée : ${ids.length} joueur(s)`);
+  return true;
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  const rr=Math.min(r,w/2,h/2);
+  ctx.beginPath();ctx.moveTo(x+rr,y);ctx.arcTo(x+w,y,x+w,y+h,rr);ctx.arcTo(x+w,y+h,x,y+h,rr);ctx.arcTo(x,y+h,x,y,rr);ctx.arcTo(x,y,x+w,y,rr);ctx.closePath();
+}
+
+async function loadCanvasImage(src){
+  return await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src});
+}
+
+async function generateMatchImage(match){
+  const selectedIds=$$('[data-lineup-player].present').map(b=>b.dataset.lineupPlayer);
+  const players=state.players.filter(p=>selectedIds.includes(p.id));
+  const canvas=document.createElement('canvas');
+  canvas.width=1080;canvas.height=1350;
+  const ctx=canvas.getContext('2d');
+
+  // background
+  ctx.fillStyle='#07130c';ctx.fillRect(0,0,1080,1350);
+  const grad=ctx.createLinearGradient(0,0,1080,1350);
+  grad.addColorStop(0,'rgba(28,173,82,.32)');grad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,1080,1350);
+
+  try{
+    const logo=await loadCanvasImage('./logo.png');
+    ctx.drawImage(logo,60,55,170,170);
+  }catch(_){}
+
+  ctx.fillStyle='#fff';ctx.font='700 40px system-ui, sans-serif';ctx.fillText('U10 HERSEAUX',260,110);
+  ctx.fillStyle='#43d56f';ctx.font='700 28px system-ui, sans-serif';
+  ctx.fillText(match.match_kind==='friendly'?'MATCH AMICAL':'CHAMPIONNAT',260,158);
+
+  ctx.fillStyle='#fff';ctx.font='800 64px system-ui, sans-serif';
+  ctx.fillText('HERSEAUX',60,310);
+  ctx.fillStyle='#43d56f';ctx.font='700 34px system-ui, sans-serif';ctx.fillText('VS',60,360);
+  ctx.fillStyle='#fff';ctx.font='800 64px system-ui, sans-serif';
+  const opp=(match.opponent||'ADVERSAIRE').toUpperCase();
+  ctx.fillText(opp.length>22?opp.slice(0,22)+'…':opp,60,430);
+
+  const infoY=500;
+  roundRect(ctx,60,infoY,960,160,28);ctx.fillStyle='rgba(255,255,255,.08)';ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='600 27px system-ui, sans-serif';
+  ctx.fillText(`📅 ${fmtLong(match.event_date)}`,90,550);
+  ctx.fillText(`🕒 Match : ${timeShort(match.start_time)||'à préciser'}`,90,600);
+  ctx.fillText(`👥 Rendez-vous : ${timeShort(match.meeting_time)||'à préciser'}`,540,600);
+  ctx.fillText(`📍 ${match.location||match.address||'Lieu à préciser'}`,90,645);
+
+  ctx.fillStyle='#43d56f';ctx.font='800 36px system-ui, sans-serif';ctx.fillText('JOUEURS CONVOQUÉS',60,735);
+  ctx.fillStyle='#fff';ctx.font='650 31px system-ui, sans-serif';
+  const cols=2, colW=470, startY=790, rowH=58;
+  players.forEach((p,i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=60+col*colW,y=startY+row*rowH;
+    ctx.fillStyle='#43d56f';ctx.beginPath();ctx.arc(x+12,y-9,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.fillText(p.first_name+(p.last_name?' '+p.last_name:''),x+35,y);
+  });
+  if(!players.length){
+    ctx.fillStyle='#bbb';ctx.fillText('Composition à compléter',60,startY);
+  }
+  ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='500 22px system-ui, sans-serif';
+  ctx.fillText('Royale Union Sportive Herseautoise · U10',60,1290);
+
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png',1));
+  const url=URL.createObjectURL(blob);
+  $('#matchImageArea').innerHTML=`
+    <div class="generated-image">
+      <img src="${url}" alt="Composition du match" />
+      <div class="modal-actions">
+        <a class="btn secondary" href="${url}" download="U10-Herseaux-${match.event_date}-${(match.opponent||'match').replace(/[^a-z0-9]+/gi,'-')}.png">Télécharger l'image</a>
+        <button class="btn primary" id="shareMatchImage">Partager</button>
+      </div>
+    </div>`;
+  $('#shareMatchImage').onclick=async()=>{
+    try{
+      const file=new File([blob],`U10-Herseaux-${match.event_date}.png`,{type:'image/png'});
+      if(navigator.share&&navigator.canShare?.({files:[file]})){
+        await navigator.share({title:'U10 Herseaux - Composition',files:[file]});
+      }else{
+        toast("Le partage direct n'est pas disponible ici. Utilise Télécharger.",false);
+      }
+    }catch(err){if(err.name!=='AbortError')toast(err.message||String(err),false)}
+  };
+}
 
 async function renderPlayers(){ if(!isCoach()){go('dashboard');return;} await loadCore(); const {data:links}=await sb.from('player_guardians').select('player_id,user_id,profiles(full_name)'); const counts={};(links||[]).forEach(l=>counts[l.player_id]=(counts[l.player_id]||0)+1); $('#content').innerHTML=`<div class="section-head"><h3>Effectif U10</h3><button class="btn primary small" id="addPlayer">+ Joueur</button></div><div class="table-wrap"><table><thead><tr><th>Joueur</th><th>N°</th><th>Parents liés</th><th>Code parent</th><th>Action</th></tr></thead><tbody>${state.players.map(p=>`<tr><td><strong>${esc(p.first_name)} ${esc(p.last_name||'')}</strong></td><td>${p.number||'—'}</td><td>${counts[p.id]||0}</td><td><button class="btn ghost small" data-pin="${p.id}">Générer / remplacer</button></td><td><button class="btn danger small" data-disable="${p.id}">Désactiver</button></td></tr>`).join('')}</tbody></table></div>`; $('#addPlayer').onclick=()=>playerModal(); $$('[data-pin]').forEach(b=>b.onclick=()=>generatePin(b.dataset.pin)); $$('[data-disable]').forEach(b=>b.onclick=async()=>{if(!confirm('Désactiver ce joueur ?'))return;const{error}=await sb.from('players').update({active:false}).eq('id',b.dataset.disable);if(error)return toast(error.message,false);await loadCore();renderPlayers()}); }
 function playerModal(){openModal(`<h2>Ajouter un joueur</h2><form id="playerForm" class="stack"><label>Prénom<input id="plFirst" required /></label><label>Nom (optionnel)<input id="plLast" /></label><label>Numéro (optionnel)<input id="plNumber" type="number" min="0" max="99" /></label><button class="btn primary">Ajouter</button></form>`);$('#playerForm').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;setBusy(btn,true);const{error}=await sb.from('players').insert({team_id:state.team.id,first_name:$('#plFirst').value.trim(),last_name:$('#plLast').value.trim()||null,number:$('#plNumber').value?Number($('#plNumber').value):null});setBusy(btn,false);if(error)return toast(error.message,false);closeModal();toast('Joueur ajouté');await loadCore();renderPlayers()}}
