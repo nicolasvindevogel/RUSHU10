@@ -3,7 +3,7 @@ const cfg = window.APP_CONFIG || {};
 const configured = cfg.SUPABASE_URL && !cfg.SUPABASE_URL.includes('VOTRE-PROJET') && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes('VOTRE_CLE');
 const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
 
-const state = { user:null, profile:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null };
+const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null };
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -25,47 +25,199 @@ window.addEventListener('offline',()=>$('#syncState').textContent='● Hors lign
 const NAV_COACH = [
   ['dashboard','⌂','Tableau de bord'],['calendar','▦','Calendrier'],['attendance','✓','Présences'],['players','⚽','Joueurs'],['evaluations','★','Évaluations'],['settings','⚙','Paramètres']
 ];
-const NAV_PARENT = [['dashboard','⌂','Accueil'],['calendar','▦','Calendrier'],['attendance','✓','Présences'],['settings','⚙','Mon compte']];
 const isCoach = () => state.membership?.role === 'coach';
 
-function setView(which){ ['authView','joinView','appView'].forEach(id=>$('#'+id).classList.add('hidden')); $('#'+which).classList.remove('hidden'); }
+function setView(which){ ['authView','appView'].forEach(id=>$('#'+id)?.classList.add('hidden')); $('#'+which)?.classList.remove('hidden'); }
 function pageMeta(page){ const m={dashboard:['Tableau de bord','Vue d’ensemble de l’équipe'],calendar:['Calendrier','Entraînements, matchs et tournois'],attendance:['Présences','Disponibilités parents et présence réelle'],players:['Joueurs','Effectif et accès parents'],evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],settings:['Paramètres','Compte et accès à l’équipe']}; return m[page]||m.dashboard; }
-function renderNav(){ const nav=isCoach()?NAV_COACH:NAV_PARENT; $('#nav').innerHTML=nav.map(([id,ic,lab])=>`<button class="nav-btn ${state.page===id?'active':''}" data-page="${id}"><span class="nav-icon">${ic}</span>${lab}</button>`).join(''); $$('#nav .nav-btn').forEach(b=>b.onclick=()=>go(b.dataset.page)); }
+function renderNav(){ const nav=NAV_COACH; $('#nav').innerHTML=nav.map(([id,ic,lab])=>`<button class="nav-btn ${state.page===id?'active':''}" data-page="${id}"><span class="nav-icon">${ic}</span>${lab}</button>`).join(''); $$('#nav .nav-btn').forEach(b=>b.onclick=()=>go(b.dataset.page)); }
 async function go(page){ state.page=page; renderNav(); const [t,s]=pageMeta(page); $('#pageTitle').textContent=t; $('#pageSubtitle').textContent=s; $('#sidebar').classList.remove('open'); if(page==='dashboard') await renderDashboard(); if(page==='calendar') await renderCalendar(); if(page==='attendance') await renderAttendance(); if(page==='players') await renderPlayers(); if(page==='evaluations') await renderEvaluations(); if(page==='settings') await renderSettings(); }
+
+const COACH_KEYS = new Set(['coach-nicolas','coach-thibaut','coach-maxime']);
+
+async function ensureSession(){
+  let {data:{session}} = await sb.auth.getSession();
+  if(session?.user) return session.user;
+  const {data,error} = await sb.auth.signInAnonymously();
+  if(error) throw error;
+  return data.user;
+}
 
 async function init(){
   if(!configured){ $('#setupWarning').classList.remove('hidden'); return; }
-  const {data:{session}} = await sb.auth.getSession();
-  if(session?.user) await loadUser(session.user); else setView('authView');
-  sb.auth.onAuthStateChange(async(_e,session)=>{ if(session?.user && session.user.id!==state.user?.id) await loadUser(session.user); if(!session) logoutLocal(); });
+  try{
+    const user = await ensureSession();
+    await loadUser(user);
+  }catch(err){
+    console.error(err);
+    setView('authView');
+    toast("Connexion impossible : " + (err.message || err), false);
+  }
+
+  sb.auth.onAuthStateChange(async(_e,session)=>{
+    if(session?.user && session.user.id!==state.user?.id) await loadUser(session.user);
+  });
 }
+
 async function loadUser(user){
   state.user=user;
-  let {data:profile}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
-  state.profile=profile||{id:user.id,full_name:user.email,role:'parent'};
-  let {data:memberships,error}=await sb.from('team_members').select('team_id,role,teams(*)').eq('user_id',user.id).limit(1);
+
+  const {data:identity,error:identityError}=await sb
+    .from('app_identities')
+    .select('identity_key,display_name,identity_type,auth_user_id')
+    .eq('auth_user_id',user.id)
+    .maybeSingle();
+
+  if(identityError && !String(identityError.message||'').includes('app_identities')){
+    console.error(identityError);
+  }
+
+  if(!identity){
+    state.identity=null;
+    state.profile=null;
+    state.membership=null;
+    state.team=null;
+    setView('authView');
+    resetLoginForm();
+    return;
+  }
+
+  state.identity=identity;
+
+  const {data:memberships,error}=await sb
+    .from('team_members')
+    .select('team_id,role,teams(*)')
+    .eq('user_id',user.id)
+    .eq('role','coach')
+    .limit(1);
+
   if(error) console.error(error);
-  if(!memberships?.length){ setView('joinView'); return; }
-  state.membership=memberships[0]; state.team=memberships[0].teams;
+  if(!memberships?.length){
+    setView('authView');
+    resetLoginForm();
+    toast("L'accès coach n'est pas encore activé pour ce profil.", false);
+    return;
+  }
+
+  state.membership=memberships[0];
+  state.team=memberships[0].teams;
+  state.profile={id:user.id,full_name:identity.display_name,role:'coach'};
+
   $('#seasonLabel').textContent=state.team.season||'';
-  $('#userCard').innerHTML=`<strong>${esc(state.profile.full_name||user.email)}</strong><br><span class="muted">${isCoach()?'Coach':'Parent'}</span>`;
-  setView('appView'); renderNav(); await loadCore(); await go(state.page);
+  $('#userCard').innerHTML=`<strong>${esc(identity.display_name)}</strong><br><span class="muted">Coach</span>`;
+  setView('appView');
+  renderNav();
+  await loadCore();
+  await go(state.page);
 }
+
 async function loadCore(){
   const [{data:players},{data:events}] = await Promise.all([
     sb.from('players').select('*').eq('team_id',state.team.id).eq('active',true).order('first_name'),
     sb.from('events').select('*').eq('team_id',state.team.id).order('event_date').order('start_time')
   ]);
-  state.players=players||[]; state.events=events||[];
+  state.players=players||[];
+  state.events=events||[];
 }
-function logoutLocal(){ state.user=state.profile=state.membership=state.team=null; state.players=[]; state.events=[]; setView('authView'); }
 
-$$('[data-auth-tab]').forEach(b=>b.onclick=()=>{ $$('[data-auth-tab]').forEach(x=>x.classList.toggle('active',x===b)); $('#loginForm').classList.toggle('hidden',b.dataset.authTab!=='login'); $('#signupForm').classList.toggle('hidden',b.dataset.authTab!=='signup'); });
-$('#loginForm').addEventListener('submit',async e=>{e.preventDefault(); const btn=e.submitter;setBusy(btn,true,'Connexion…'); const {error}=await sb.auth.signInWithPassword({email:$('#loginEmail').value.trim(),password:$('#loginPassword').value}); setBusy(btn,false); if(error)toast(error.message,false)});
-$('#signupForm').addEventListener('submit',async e=>{e.preventDefault(); const btn=e.submitter;setBusy(btn,true); const name=$('#signupName').value.trim(); const {data,error}=await sb.auth.signUp({email:$('#signupEmail').value.trim(),password:$('#signupPassword').value,options:{data:{full_name:name}}}); setBusy(btn,false); if(error)return toast(error.message,false); if(data.user) toast('Compte créé. Vérifie ton e-mail si Supabase demande une confirmation.'); });
-$('#joinTeamForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.submitter;setBusy(btn,true);const {error}=await sb.rpc('join_team',{p_code:$('#teamCode').value.trim()});setBusy(btn,false);if(error)return toast(error.message,false);toast('Équipe rejointe');await loadUser(state.user)});
-$('#claimCoachForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.submitter;setBusy(btn,true);const {error}=await sb.rpc('claim_coach',{p_code:$('#coachCode').value.trim()});setBusy(btn,false);if(error)return toast(error.message,false);toast('Compte coach activé');await loadUser(state.user)});
-$('#logoutBtn').onclick=$('#logoutJoin').onclick=()=>sb.auth.signOut(); $('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
+function logoutLocal(){
+  state.user=state.profile=state.identity=state.membership=state.team=null;
+  state.players=[];
+  state.events=[];
+  setView('authView');
+  resetLoginForm();
+}
+
+function resetLoginForm(){
+  const sel=$('#identitySelect');
+  if(sel) sel.value='';
+  $('#pinArea')?.classList.add('hidden');
+  $('#parentPending')?.classList.add('hidden');
+  $('#pinConfirmLabel')?.classList.add('hidden');
+  if($('#pinInput')) $('#pinInput').value='';
+  if($('#pinConfirm')) $('#pinConfirm').value='';
+  state.loginMode=null;
+}
+
+async function prepareIdentityLogin(){
+  const key=$('#identitySelect').value;
+  $('#pinArea').classList.add('hidden');
+  $('#parentPending').classList.add('hidden');
+  $('#pinConfirmLabel').classList.add('hidden');
+  $('#pinInput').value='';
+  $('#pinConfirm').value='';
+  state.loginMode=null;
+
+  if(!key) return;
+
+  if(key.startsWith('player-')){
+    $('#parentPending').classList.remove('hidden');
+    return;
+  }
+
+  const {data,error}=await sb.rpc('identity_login_status',{p_identity_key:key});
+  if(error){
+    console.error(error);
+    return toast(error.message,false);
+  }
+
+  if(!data?.exists){
+    return toast("Ce profil coach n'existe pas dans Supabase. Exécute SETUP_COACH.sql.", false);
+  }
+
+  state.loginMode = data.has_pin ? 'login' : 'activate';
+  $('#pinArea').classList.remove('hidden');
+
+  if(state.loginMode==='activate'){
+    $('#pinHelp').textContent="Première connexion : choisissez votre code personnel à 6 chiffres. Vous ne devrez le créer qu'une seule fois.";
+    $('#pinConfirmLabel').classList.remove('hidden');
+    $('#pinConfirm').required=true;
+    $('#identitySubmit').textContent='Créer mon accès coach';
+  }else{
+    $('#pinHelp').textContent='Saisissez votre code personnel à 6 chiffres.';
+    $('#pinConfirm').required=false;
+    $('#identitySubmit').textContent='Se connecter';
+  }
+}
+
+$('#identitySelect').addEventListener('change',prepareIdentityLogin);
+
+$('#identityForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const key=$('#identitySelect').value;
+  if(!COACH_KEYS.has(key)) return toast("L'accès parent sera ajouté ensuite.",false);
+
+  const pin=$('#pinInput').value.trim();
+  if(!/^\d{6}$/.test(pin)) return toast('Le code doit contenir exactement 6 chiffres.',false);
+
+  if(state.loginMode==='activate'){
+    const confirmation=$('#pinConfirm').value.trim();
+    if(pin!==confirmation) return toast('Les deux codes ne correspondent pas.',false);
+  }
+
+  const btn=e.submitter;
+  setBusy(btn,true,state.loginMode==='activate'?'Création…':'Connexion…');
+
+  const fn=state.loginMode==='activate'?'activate_identity':'login_identity';
+  const {data,error}=await sb.rpc(fn,{p_identity_key:key,p_pin:pin});
+
+  setBusy(btn,false);
+  if(error) return toast(error.message,false);
+
+  toast(state.loginMode==='activate'?'Accès coach créé.':'Connexion réussie.');
+  await loadUser(state.user);
+});
+
+$('#logoutBtn').onclick=async()=>{
+  await sb.auth.signOut();
+  state.user=null;
+  try{
+    const user=await ensureSession();
+    await loadUser(user);
+  }catch(err){
+    toast(err.message||String(err),false);
+  }
+};
+$('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
 
 function eventTypePill(type){ const x={training:['green','Entraînement'],match:['blue','Match'],tournament:['orange','Tournoi'],other:['gray','Autre']}[type]||['gray',type]; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
 function statusPill(s){ const m={present:['green','Présent'],absent:['red','Absent'],maybe:['orange','Incertain'],excused:['orange','Excusé'],late:['orange','Retard']}; const x=m[s]||['gray','Pas de réponse']; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
@@ -105,9 +257,24 @@ async function renderEvaluations(){ if(!isCoach()){go('dashboard');return;} cons
 function evalPoints(v){return v==='A'?3:v==='B'?2:v==='C'?1:0} function updateEvalScore(pid){ const vals=$$(`[data-eval="${pid}"]`).filter(x=>x.dataset.field!=='overall_level').map(x=>x.value); const score=vals.some(Boolean)?vals.reduce((a,v)=>a+evalPoints(v),0):'—'; $(`[data-score="${pid}"]`).textContent=score; }
 async function saveEvaluations(){ const btn=$('#saveEvals');setBusy(btn,true);const date=$('#evalDate').value; const rows=state.players.map(p=>{const get=f=>$(`[data-eval="${p.id}"][data-field="${f}"]`).value||null;const vals=['technique','game_intelligence','athletic','attitude'].map(get);const any=vals.some(Boolean)||get('overall_level')||$(`[data-remark="${p.id}"]`).value.trim(); if(!any)return null; return {player_id:p.id,eval_date:date,technique:vals[0],game_intelligence:vals[1],athletic:vals[2],attitude:vals[3],score_total:vals.reduce((a,v)=>a+evalPoints(v),0),overall_level:get('overall_level'),remarks:$(`[data-remark="${p.id}"]`).value.trim()||null,evaluated_by:state.user.id,updated_at:new Date().toISOString()}; }).filter(Boolean); const {error}=rows.length?await sb.from('evaluations').upsert(rows,{onConflict:'player_id,eval_date'}):{error:null};setBusy(btn,false);if(error)return toast(error.message,false);toast('Évaluations enregistrées'); }
 
-async function renderSettings(){ let extra=''; if(!isCoach()){ const {data:links}=await sb.from('player_guardians').select('player_id,players(first_name)').eq('user_id',state.user.id); extra=`<div class="panel"><h3>Mes enfants liés</h3>${links?.length?`<p>${links.map(x=>`<span class="pill green">${esc(x.players.first_name)}</span>`).join(' ')}</p>`:'<p class="muted">Aucun enfant lié.</p>'}<button class="btn primary" id="linkChild">Lier mon enfant</button></div>`; }
-  $('#content').innerHTML=`<div class="grid2"><div class="panel stack"><h3>Mon compte</h3><label>Nom et prénom<input id="profileName" value="${esc(state.profile.full_name||'')}" /></label><label>E-mail<input value="${esc(state.user.email||'')}" disabled /></label><button class="btn primary" id="saveProfile">Enregistrer</button></div><div class="panel"><h3>Équipe</h3><p><strong>${esc(state.team.name)}</strong><br><span class="muted">Saison ${esc(state.team.season)}</span></p><p class="muted">Rôle : ${isCoach()?'Coach':'Parent'}</p>${isCoach()?'<p class="muted">Les codes équipe et coach sont définis dans Supabase. Pense à remplacer les codes par défaut après installation.</p>':''}</div></div>${extra}`; $('#saveProfile').onclick=async()=>{const name=$('#profileName').value.trim();const{error}=await sb.from('profiles').update({full_name:name}).eq('id',state.user.id);if(error)return toast(error.message,false);state.profile.full_name=name;toast('Profil enregistré')}; $('#linkChild')?.addEventListener('click',linkChildModal); }
-function linkChildModal(){ openModal(`<h2>Lier mon enfant</h2><p>Choisis le joueur puis saisis le code généré par le coach.</p><form id="linkChildForm" class="stack"><label>Joueur<select id="linkPlayer">${state.players.map(p=>`<option value="${p.id}">${esc(p.first_name)}</option>`).join('')}</select></label><label>Code joueur<input id="linkPin" inputmode="numeric" maxlength="6" required /></label><button class="btn primary">Lier</button></form>`); $('#linkChildForm').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;setBusy(btn,true);const{error}=await sb.rpc('link_player_with_pin',{p_player_id:$('#linkPlayer').value,p_pin:$('#linkPin').value.trim()});setBusy(btn,false);if(error)return toast(error.message,false);closeModal();toast('Enfant lié au compte');renderSettings()}; }
+async function renderSettings(){
+  $('#content').innerHTML=`
+    <div class="grid2">
+      <div class="panel stack">
+        <h3>Mon accès coach</h3>
+        <label>Profil<input value="${esc(state.identity?.display_name||'')}" disabled /></label>
+        <p class="muted">Le téléphone conserve automatiquement la session Supabase. Tant que vous ne vous déconnectez pas et que les données du navigateur ne sont pas effacées, l'application s'ouvre directement.</p>
+      </div>
+      <div class="panel">
+        <h3>Équipe</h3>
+        <p><strong>${esc(state.team.name)}</strong><br><span class="muted">Saison ${esc(state.team.season)}</span></p>
+        <p class="muted">Rôle : Coach</p>
+        <p class="muted">L'accès parent sera ajouté dans une prochaine version avec des droits réduits.</p>
+      </div>
+    </div>`;
+}
+
+
 
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));
 init();

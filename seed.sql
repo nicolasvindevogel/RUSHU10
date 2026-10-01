@@ -8,8 +8,8 @@ values(
   '8d92c6e8-33f3-4d8f-9dd1-010202620270',
   'U10 Herseaux',
   '2026-2027',
-  crypt('HERSEAUX-U10-2026',gen_salt('bf')),
-  crypt('COACH-HERSEAUX-2026',gen_salt('bf'))
+  extensions.crypt('HERSEAUX-U10-2026',extensions.gen_salt('bf')),
+  extensions.crypt('COACH-HERSEAUX-2026',extensions.gen_salt('bf'))
 )
 on conflict(id) do update set name=excluded.name,season=excluded.season;
 

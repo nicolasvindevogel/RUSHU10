@@ -17,48 +17,66 @@
       <img src="assets/logo.png" class="auth-logo" alt="Royale Union Sportive Herseautoise" />
       <h1>U10 HERSEAUX</h1>
       <p class="muted">Présences · Calendrier · Matchs · Évaluations</p>
-      <div id="setupWarning" class="notice warning hidden">
-        Configure d'abord <strong>config.js</strong> avec l'URL et la clé anon de ton projet Supabase.
-      </div>
-      <div class="tabs">
-        <button class="tab active" data-auth-tab="login">Connexion</button>
-        <button class="tab" data-auth-tab="signup">Créer un compte</button>
-      </div>
-      <form id="loginForm" class="stack">
-        <label>E-mail<input id="loginEmail" type="email" required autocomplete="email" /></label>
-        <label>Mot de passe<input id="loginPassword" type="password" required minlength="6" autocomplete="current-password" /></label>
-        <button class="btn primary" type="submit">Se connecter</button>
-      </form>
-      <form id="signupForm" class="stack hidden">
-        <label>Nom et prénom<input id="signupName" required /></label>
-        <label>E-mail<input id="signupEmail" type="email" required autocomplete="email" /></label>
-        <label>Mot de passe<input id="signupPassword" type="password" required minlength="6" autocomplete="new-password" /></label>
-        <button class="btn primary" type="submit">Créer mon compte</button>
-        <small class="muted">Après inscription, entre le code équipe communiqué par le coach.</small>
-      </form>
-    </div>
-  </section>
 
-  <section id="joinView" class="auth-shell hidden">
-    <div class="auth-card wide">
-      <img src="assets/logo.png" class="auth-logo small" alt="Logo" />
-      <h2>Accès à l'équipe</h2>
-      <p>Ton compte est créé mais n'est pas encore rattaché à l'équipe.</p>
-      <div class="grid2">
-        <form id="joinTeamForm" class="panel stack">
-          <h3>Parent</h3>
-          <p class="muted">Entre le code équipe fourni par le coach.</p>
-          <label>Code équipe<input id="teamCode" required placeholder="Ex. HERSEAUX-U10-2026" /></label>
-          <button class="btn primary">Rejoindre l'équipe</button>
-        </form>
-        <form id="claimCoachForm" class="panel stack">
-          <h3>Coach</h3>
-          <p class="muted">À utiliser uniquement pour l'activation initiale du compte coach.</p>
-          <label>Code coach<input id="coachCode" required /></label>
-          <button class="btn secondary">Activer le mode coach</button>
-        </form>
+      <div id="setupWarning" class="notice warning hidden">
+        La connexion Supabase n'est pas configurée.
       </div>
-      <button id="logoutJoin" class="btn ghost">Se déconnecter</button>
+
+      <form id="identityForm" class="stack">
+        <label>Qui êtes-vous ?
+          <select id="identitySelect" required>
+            <option value="">Choisir dans la liste…</option>
+            <optgroup label="Coachs">
+              <option value="coach-nicolas">VINDEVOGEL Nicolas</option>
+              <option value="coach-thibaut">THERY Thibaut</option>
+              <option value="coach-maxime">DELANNOY Maxime</option>
+            </optgroup>
+            <optgroup label="Joueurs / parents">
+              <option value="player-fabio">Fabio</option>
+              <option value="player-soan">Soan</option>
+              <option value="player-thelyo">Thélyo</option>
+              <option value="player-mae">Maé</option>
+              <option value="player-maloys">Maloys</option>
+              <option value="player-baptiste">Baptiste</option>
+              <option value="player-ihsan">Ihsan</option>
+              <option value="player-alessio">Alessio</option>
+              <option value="player-valentin">Valentin</option>
+              <option value="player-lionel">Lionel</option>
+              <option value="player-ilyan">Ilyan</option>
+              <option value="player-naelyo">Naëlyo</option>
+              <option value="player-theophile">Théophile</option>
+              <option value="player-nabil">Nabil</option>
+              <option value="player-amadeo">Amadeo</option>
+              <option value="player-vianney">Vianney</option>
+              <option value="player-antonin">Antonin</option>
+              <option value="player-giulian">Giulian</option>
+              <option value="player-tony">Tony</option>
+              <option value="player-basile">Basile</option>
+              <option value="player-yacine">Yacine</option>
+              <option value="player-elom">Elom</option>
+            </optgroup>
+          </select>
+        </label>
+
+        <div id="parentPending" class="notice warning hidden">
+          L'accès parent sera activé dans la prochaine étape. Pour le moment, seuls les coachs peuvent se connecter.
+        </div>
+
+        <div id="pinArea" class="stack hidden">
+          <p id="pinHelp" class="muted"></p>
+          <label>Code personnel à 6 chiffres
+            <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />
+          </label>
+          <label id="pinConfirmLabel" class="hidden">Confirmer le code
+            <input id="pinConfirm" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" />
+          </label>
+          <button id="identitySubmit" class="btn primary" type="submit">Se connecter</button>
+        </div>
+      </form>
+
+      <p class="muted" style="margin-top:16px;font-size:.9rem">
+        Sur votre téléphone, la session reste enregistrée : vous ne devrez normalement plus saisir le code à chaque ouverture.
+      </p>
     </div>
   </section>
 
