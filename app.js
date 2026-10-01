@@ -40,12 +40,14 @@ const NAV_COACH = [
   ['players','👥','Joueurs'],
   ['evaluations','★','Évaluations'],
   ['messages','💬','Messages'],
+  ['polls','📊','Sondages'],
   ['settings','⚙','Paramètres']
 ];
 const NAV_PARENT = [
   ['dashboard','⌂','Accueil'],
   ['attendance','✓','Présences'],
   ['contact','💬','Contacter les coachs'],
+  ['polls','📊','Sondages'],
   ['settings','⚙','Mon accès']
 ];
 const isCoach = () => state.membership?.role === 'coach';
@@ -62,12 +64,14 @@ function pageMeta(page){
     players:['Joueurs','Effectif U10'],
     evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],
     messages:['Messages','Conversations privées avec les parents'],
+    polls:['Sondages','Créer des questions et suivre les réponses des parents'],
     settings:['Paramètres','Compte et accès à l’équipe']
   };
   const parent={
     dashboard:['Accueil','Calendrier et événements U10'],
     attendance:['Présences','Disponibilités de votre enfant'],
     contact:['Contacter les coachs','Conversation privée avec le staff U10'],
+    polls:['Sondages','Répondez aux questions concernant votre enfant'],
     settings:['Mon accès','Accès parent et notifications']
   };
   return (isCoach()?coach:parent)[page] || (isCoach()?coach.dashboard:parent.dashboard);
@@ -97,6 +101,7 @@ async function go(page){
   if(page==='evaluations' && isCoach()) await renderEvaluations();
   if(page==='messages' && isCoach()) await renderCoachMessages();
   if(page==='contact' && !isCoach()) await renderParentContact();
+  if(page==='polls') await (isCoach()?renderCoachPolls():renderParentPolls());
   if(page==='settings') await renderSettings();
 }
 
@@ -450,6 +455,8 @@ async function renderParentHome(){
     <div class="section-head"><div><h3>Calendrier du mois</h3><span class="muted">Touchez les présences pour répondre aux événements.</span></div></div>
     ${agendaCalendarHTML(monthEvents)}
 
+    <div id="parentPollTeaser"></div>
+
     <div class="parent-contact-cta">
       <div><strong>Une information privée concernant ${esc(child?.first_name||'votre enfant')} ?</strong>
       <span>Écrivez directement aux trois coachs.</span></div>
@@ -459,6 +466,21 @@ async function renderParentHome(){
   $('#homePresence').onclick=()=>go('attendance');
   $('#homeContact').onclick=()=>go('contact');
   $$('[data-cal-event]').forEach(b=>b.onclick=()=>{go('attendance')});
+
+  const {data:activePolls}=await sb.from('polls')
+    .select('id,title,question,closes_at,status')
+    .eq('team_id',state.team.id)
+    .eq('status','open')
+    .order('created_at',{ascending:false});
+  const visible=(activePolls||[]).filter(p=>!p.closes_at || new Date(p.closes_at).getTime()>=Date.now());
+  if(visible.length){
+    $('#parentPollTeaser').innerHTML=`
+      <div class="poll-home-card">
+        <div><small>SONDAGE EN COURS</small><strong>${esc(visible[0].title)}</strong><span>${esc(visible[0].question)}</span></div>
+        <button class="btn primary" id="homePolls">Répondre</button>
+      </div>`;
+    $('#homePolls').onclick=()=>go('polls');
+  }
 }
 
 async function renderParentAttendance(){
@@ -1846,6 +1868,284 @@ function openEvaluationGuide(){
       <p><strong>C · Apprentissage — 4 à 6 :</strong> fondamentaux encore à développer : coordination, conduite sous pression et compréhension de l'espace.</p>
       <p class="muted">Conseil : observer sur 2 à 3 séances, notamment en jeu réduit 3v3/4v4 et lors d'un atelier technique. Les groupes restent évolutifs.</p>
     </div>`);
+}
+
+
+function pollDateLabel(value){
+  if(!value)return 'Sans date limite';
+  const d=new Date(value);
+  return new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d);
+}
+function pollIsOpen(p){
+  if(p.status!=='open')return false;
+  if(!p.closes_at)return true;
+  return new Date(p.closes_at).getTime()>=Date.now();
+}
+
+async function fetchPollBundle(){
+  const {data:polls,error}=await sb.from('polls')
+    .select('*,poll_options(*)')
+    .eq('team_id',state.team.id)
+    .order('created_at',{ascending:false});
+  if(error){toast(error.message,false);return []}
+  return (polls||[]).map(p=>({...p,poll_options:(p.poll_options||[]).sort((a,b)=>a.position-b.position)}));
+}
+
+async function renderCoachPolls(){
+  const polls=await fetchPollBundle();
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div><h3>Sondages</h3><span class="muted">Les sondages restent classés du plus récent au plus ancien.</span></div>
+      <button class="btn primary" id="newPoll">+ Nouveau sondage</button>
+    </div>
+    <div class="poll-list">
+      ${polls.length?polls.map(p=>coachPollCard(p)).join(''):'<div class="empty panel">Aucun sondage créé.</div>'}
+    </div>`;
+  $('#newPoll').onclick=()=>pollModal();
+  $$('[data-poll-open]').forEach(b=>b.onclick=()=>openCoachPoll(b.dataset.pollOpen,polls.find(p=>p.id===b.dataset.pollOpen)));
+  $$('[data-poll-edit]').forEach(b=>b.onclick=()=>pollModal(polls.find(p=>p.id===b.dataset.pollEdit)));
+  $$('[data-poll-close]').forEach(b=>b.onclick=()=>closePoll(b.dataset.pollClose));
+}
+
+function coachPollCard(p){
+  const open=pollIsOpen(p);
+  return `<div class="poll-card">
+    <div class="poll-card-head">
+      <div>
+        <small>${fmtFullDate(p.created_at.slice(0,10))}</small>
+        <h3>${esc(p.title)}</h3>
+      </div>
+      <span class="poll-status ${open?'open':'closed'}">${open?'Ouvert':'Clôturé'}</span>
+    </div>
+    <p>${esc(p.question)}</p>
+    <div class="poll-meta">
+      <span>${p.allow_multiple?'Choix multiples':'Choix unique'}</span>
+      <span>${p.closes_at?'Clôture : '+pollDateLabel(p.closes_at):'Sans date limite'}</span>
+      <span>${p.poll_options.length} choix</span>
+    </div>
+    <div class="event-actions">
+      <button class="btn secondary small" data-poll-open="${p.id}">Résultats</button>
+      <button class="btn ghost small" data-poll-edit="${p.id}">Modifier</button>
+      ${open?`<button class="btn danger small" data-poll-close="${p.id}">Clôturer</button>`:''}
+    </div>
+  </div>`;
+}
+
+function pollModal(p=null){
+  const options=(p?.poll_options?.length?p.poll_options.map(x=>x.label):['','']);
+  const dt=p?.closes_at ? new Date(p.closes_at) : null;
+  const localClose=dt ? `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}T${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '';
+
+  openModal(`<h2>${p?'Modifier':'Créer'} un sondage</h2>
+    <form id="pollForm" class="stack">
+      <label>Titre<input id="pollTitle" required value="${esc(p?.title||'')}" placeholder="Ex. Tournoi du 15 novembre" /></label>
+      <label>Question<textarea id="pollQuestion" required placeholder="Ex. Votre enfant est-il disponible ?">${esc(p?.question||'')}</textarea></label>
+      <label>Date / heure limite (optionnel)<input id="pollCloseAt" type="datetime-local" value="${localClose}" /></label>
+      <label class="check-label"><input id="pollMultiple" type="checkbox" ${p?.allow_multiple?'checked':''} /> Autoriser plusieurs choix</label>
+      <div>
+        <div class="section-head compact"><strong>Choix proposés</strong><button type="button" class="btn ghost small" id="addPollOption">+ Choix</button></div>
+        <div id="pollOptions" class="stack">
+          ${options.map((o,i)=>`<div class="poll-option-edit"><input class="poll-option-input" value="${esc(o)}" placeholder="Choix ${i+1}" required /><button type="button" class="btn danger small poll-remove-option">×</button></div>`).join('')}
+        </div>
+      </div>
+      <button class="btn primary" type="submit">${p?'Enregistrer les modifications':'Publier le sondage'}</button>
+    </form>`);
+
+  const bindRemove=()=>$$('.poll-remove-option').forEach(b=>b.onclick=()=>{
+    if($$('.poll-option-input').length<=2)return toast('Il faut au moins 2 choix.',false);
+    b.parentElement.remove();
+  });
+  bindRemove();
+  $('#addPollOption').onclick=()=>{
+    const wrap=document.createElement('div');
+    wrap.className='poll-option-edit';
+    wrap.innerHTML=`<input class="poll-option-input" placeholder="Nouveau choix" required /><button type="button" class="btn danger small poll-remove-option">×</button>`;
+    $('#pollOptions').appendChild(wrap);bindRemove();
+  };
+
+  $('#pollForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter;
+    const labels=$$('.poll-option-input').map(i=>i.value.trim()).filter(Boolean);
+    if(labels.length<2)return toast('Ajoutez au moins 2 choix.',false);
+    setBusy(btn,true);
+
+    const payload={
+      team_id:state.team.id,
+      title:$('#pollTitle').value.trim(),
+      question:$('#pollQuestion').value.trim(),
+      closes_at:$('#pollCloseAt').value?new Date($('#pollCloseAt').value).toISOString():null,
+      allow_multiple:$('#pollMultiple').checked,
+      status:p?.status||'open',
+      created_by:state.user.id,
+      updated_at:new Date().toISOString()
+    };
+
+    let pollId=p?.id;
+    if(p){
+      const {error}=await sb.from('polls').update(payload).eq('id',p.id);
+      if(error){setBusy(btn,false);return toast(error.message,false)}
+      const {data:responses}=await sb.from('poll_responses').select('id').eq('poll_id',p.id).limit(1);
+      if(responses?.length){
+        // Si des réponses existent, on conserve les options déjà créées pour éviter de casser les votes.
+        const oldLabels=(p.poll_options||[]).map(x=>x.label);
+        if(JSON.stringify(oldLabels)!==JSON.stringify(labels)){
+          setBusy(btn,false);
+          return toast("Des réponses existent déjà : les choix ne peuvent plus être modifiés. Vous pouvez modifier le titre, la question ou la date.",false);
+        }
+      }else{
+        await sb.from('poll_options').delete().eq('poll_id',p.id);
+        const {error:optErr}=await sb.from('poll_options').insert(labels.map((label,i)=>({poll_id:p.id,label,position:i+1})));
+        if(optErr){setBusy(btn,false);return toast(optErr.message,false)}
+      }
+    }else{
+      const {data,error}=await sb.from('polls').insert(payload).select().single();
+      if(error){setBusy(btn,false);return toast(error.message,false)}
+      pollId=data.id;
+      const {error:optErr}=await sb.from('poll_options').insert(labels.map((label,i)=>({poll_id:pollId,label,position:i+1})));
+      if(optErr){setBusy(btn,false);return toast(optErr.message,false)}
+    }
+
+    setBusy(btn,false);closeModal();toast('Sondage enregistré');await renderCoachPolls();
+  };
+}
+
+async function closePoll(id){
+  if(!confirm('Clôturer ce sondage ? Les parents ne pourront plus modifier leur réponse.'))return;
+  const {error}=await sb.from('polls').update({status:'closed',updated_at:new Date().toISOString()}).eq('id',id);
+  if(error)return toast(error.message,false);
+  toast('Sondage clôturé');renderCoachPolls();
+}
+
+async function openCoachPoll(id,poll){
+  const [{data:responses,error},{data:players}]=await Promise.all([
+    sb.from('poll_responses').select('player_id,option_id,created_at').eq('poll_id',id),
+    sb.from('players').select('id,first_name,last_name').eq('team_id',state.team.id).eq('active',true)
+  ]);
+  if(error)return toast(error.message,false);
+  const res=responses||[];
+  const pmap=new Map((players||[]).map(p=>[p.id,p]));
+  const counts={};
+  poll.poll_options.forEach(o=>counts[o.id]=0);
+  res.forEach(r=>counts[r.option_id]=(counts[r.option_id]||0)+1);
+  const answered=new Set(res.map(r=>r.player_id));
+
+  openModal(`<h2>${esc(poll.title)}</h2>
+    <p>${esc(poll.question)}</p>
+    <div class="poll-results">
+      ${poll.poll_options.map(o=>{
+        const names=res.filter(r=>r.option_id===o.id).map(r=>pmap.get(r.player_id)?.first_name).filter(Boolean);
+        return `<div class="poll-result-row">
+          <div class="poll-result-top"><strong>${esc(o.label)}</strong><span>${counts[o.id]} réponse(s)</span></div>
+          <div class="poll-result-bar"><span style="width:${state.players.length?Math.min(100,(counts[o.id]/state.players.length)*100):0}%"></span></div>
+          <small>${names.length?esc(names.join(', ')):'Aucun joueur'}</small>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="panel poll-answer-summary">
+      <strong>${answered.size} / ${state.players.length}</strong>
+      <span>joueur(s) ont répondu</span>
+    </div>
+    <div class="panel">
+      <strong>Sans réponse</strong>
+      <p class="muted">${state.players.filter(p=>!answered.has(p.id)).map(p=>esc(p.first_name)).join(', ')||'Tout le monde a répondu.'}</p>
+    </div>`);
+}
+
+async function renderParentPolls(){
+  const pid=state.parentPlayerId;
+  const child=state.players.find(p=>p.id===pid);
+  if(!pid){
+    $('#content').innerHTML='<div class="notice warning">Aucun enfant lié à cet accès.</div>';return;
+  }
+
+  const polls=await fetchPollBundle();
+  let responses=[];
+  if(polls.length){
+    const {data,error}=await sb.from('poll_responses')
+      .select('poll_id,option_id')
+      .eq('player_id',pid)
+      .in('poll_id',polls.map(p=>p.id));
+    if(error)toast(error.message,false);
+    responses=data||[];
+  }
+  const byPoll=new Map();
+  responses.forEach(r=>{
+    if(!byPoll.has(r.poll_id))byPoll.set(r.poll_id,new Set());
+    byPoll.get(r.poll_id).add(r.option_id);
+  });
+
+  $('#content').innerHTML=`
+    <div class="notice"><strong>${esc(child?.first_name||'Votre enfant')}</strong> · les réponses ci-dessous concernent uniquement votre enfant.</div>
+    <div class="poll-list">
+      ${polls.length?polls.map(p=>parentPollCard(p,byPoll.get(p.id)||new Set())).join(''):'<div class="empty panel">Aucun sondage pour le moment.</div>'}
+    </div>`;
+
+  $$('[data-parent-poll]').forEach(b=>b.onclick=()=>openParentPoll(
+    polls.find(p=>p.id===b.dataset.parentPoll),
+    pid,
+    byPoll.get(b.dataset.parentPoll)||new Set()
+  ));
+}
+
+function parentPollCard(p,selected){
+  const open=pollIsOpen(p);
+  const answered=selected.size>0;
+  return `<div class="poll-card parent">
+    <div class="poll-card-head">
+      <div><small>${fmtFullDate(p.created_at.slice(0,10))}</small><h3>${esc(p.title)}</h3></div>
+      <span class="poll-status ${open?'open':'closed'}">${open?'Ouvert':'Clôturé'}</span>
+    </div>
+    <p>${esc(p.question)}</p>
+    <div class="poll-meta">
+      <span>${answered?'✓ Réponse enregistrée':'En attente de réponse'}</span>
+      <span>${p.closes_at?'Jusqu’au '+pollDateLabel(p.closes_at):'Sans date limite'}</span>
+    </div>
+    <button class="btn ${answered?'secondary':'primary'} full" data-parent-poll="${p.id}">${answered?'Voir / modifier ma réponse':'Répondre au sondage'}</button>
+  </div>`;
+}
+
+async function openParentPoll(poll,pid,selected){
+  const open=pollIsOpen(poll);
+  openModal(`<h2>${esc(poll.title)}</h2>
+    <p>${esc(poll.question)}</p>
+    ${poll.closes_at?`<p class="muted">Date limite : ${pollDateLabel(poll.closes_at)}</p>`:''}
+    <form id="parentPollForm" class="stack">
+      <div class="parent-poll-options">
+        ${poll.poll_options.map(o=>`
+          <label class="parent-poll-option ${selected.has(o.id)?'selected':''}">
+            <input type="${poll.allow_multiple?'checkbox':'radio'}" name="pollOption" value="${o.id}" ${selected.has(o.id)?'checked':''} ${open?'':'disabled'} />
+            <span>${esc(o.label)}</span>
+          </label>`).join('')}
+      </div>
+      ${open?'<button class="btn primary" type="submit">Enregistrer ma réponse</button>':'<div class="notice">Ce sondage est clôturé. La réponse n’est plus modifiable.</div>'}
+    </form>`);
+  $$('.parent-poll-option input').forEach(i=>i.onchange=()=>{
+    $$('.parent-poll-option').forEach(l=>l.classList.toggle('selected',l.querySelector('input').checked));
+  });
+  if(open){
+    $('#parentPollForm').onsubmit=async e=>{
+      e.preventDefault();
+      const btn=e.submitter;
+      const ids=$$('.parent-poll-option input:checked').map(i=>i.value);
+      if(!ids.length)return toast('Choisissez au moins une réponse.',false);
+      setBusy(btn,true);
+
+      const {error:delErr}=await sb.from('poll_responses').delete().eq('poll_id',poll.id).eq('player_id',pid);
+      if(delErr){setBusy(btn,false);return toast(delErr.message,false)}
+
+      const rows=ids.map(option_id=>({
+        poll_id:poll.id,
+        option_id,
+        player_id:pid,
+        answered_by:state.user.id
+      }));
+      const {error}=await sb.from('poll_responses').insert(rows);
+      setBusy(btn,false);
+      if(error)return toast(error.message,false);
+      closeModal();toast('Réponse enregistrée');await renderParentPolls();
+    };
+  }
 }
 
 async function renderSettings(){

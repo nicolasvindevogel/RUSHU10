@@ -149,3 +149,23 @@ L'accès Parent normal de Giulian, Valentin et Soan reste disponible dans l'écr
 
 ### Multi-appareils
 Une même identité Parent peut désormais être connectée sur plusieurs téléphones avec le même code à 6 chiffres. La connexion d'un deuxième téléphone ne déconnecte plus le premier.
+
+
+## v13 — Sondages
+Exécuter une fois `supabase/UPGRADE_SONDAGES_V13.sql`.
+
+### Côté coach
+- nouveau menu **Sondages** ;
+- création d'un titre, d'une question et de 2 choix minimum ;
+- choix unique ou plusieurs choix ;
+- date/heure limite facultative ;
+- sondages conservés en liste du plus récent au plus ancien ;
+- possibilité de modifier ou clôturer ;
+- résultats détaillés avec nombre de réponses, noms des joueurs et liste des joueurs sans réponse.
+
+### Côté parent
+- nouveau menu **Sondages** ;
+- le parent ne répond que pour son enfant ;
+- réponse modifiable tant que le sondage est ouvert ;
+- sondage en cours mis en avant sur l'accueil parent ;
+- les sondages clôturés restent consultables mais ne sont plus modifiables.

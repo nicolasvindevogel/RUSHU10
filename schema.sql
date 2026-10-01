@@ -518,3 +518,6 @@ on conflict(team_id,month_num) do update set
 
 
 -- V12 : exécuter UPGRADE_COACHS_PARENTS_V12.sql pour multi-appareils et coachs parents.
+
+
+-- V13 : exécuter UPGRADE_SONDAGES_V13.sql pour activer les sondages.
