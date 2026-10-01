@@ -77,3 +77,16 @@
   color:#91c4ff;
   border-left:4px solid #3787e6;
 }
+
+
+/* === Évaluations v8 === */
+.grade{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;font-weight:900}
+.grade-A{background:rgba(28,173,82,.20);color:#66ee91}
+.grade-B{background:rgba(231,174,40,.18);color:#f6c85c}
+.grade-C{background:rgba(221,71,71,.18);color:#ff7f7f}
+.grade-—{background:rgba(255,255,255,.06);color:#999}
+.link-button{border:0;background:none;color:inherit;padding:0;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.25);text-underline-offset:3px}
+.guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+@media(max-width:700px){
+  .guide-grid{grid-template-columns:1fr}
+}

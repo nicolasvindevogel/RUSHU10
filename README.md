@@ -51,3 +51,24 @@ Cette mise à jour ajoute :
 - cache PWA incrémenté pour forcer la mise à jour sur smartphone.
 
 Dans Supabase, **Anonymous Sign-Ins doit être activé** dans Authentication.
+
+
+## v8 — Évaluations U10 + présence coach intelligente
+Avant utilisation des nouvelles évaluations, exécuter une fois `supabase/UPGRADE_EVALUATIONS_V8.sql`.
+
+### Évaluations
+- 4 critères exacts : maîtrise technique, prise d'information, aisance athlétique, mental & attitude ;
+- A=3, B=2, C=1 ;
+- groupe calculé automatiquement : 10–12 A Confirmé, 7–9 B Intermédiaire, 4–6 C Apprentissage ;
+- plusieurs séances par mois ;
+- types d'observation : jeu réduit, atelier technique, match, entraînement général, autre ;
+- synthèse mensuelle basée sur la moyenne des séances ;
+- historique individuel et historique des séances ;
+- avertissement tant qu'il y a moins de 2 séances dans le mois ;
+- guide des critères intégré.
+
+### Présence coach
+À l'ouverture, l'application sélectionne automatiquement :
+1. l'entraînement ou match du jour s'il existe ;
+2. sinon l'événement entraînement/match le plus proche dans le calendrier.
+Une sélection faite manuellement reste prioritaire pendant la navigation en cours.

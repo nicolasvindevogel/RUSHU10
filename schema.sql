@@ -92,6 +92,7 @@ create table if not exists public.evaluations (
   id uuid primary key default gen_random_uuid(),
   player_id uuid not null references public.players(id) on delete cascade,
   eval_date date not null,
+  eval_type text not null default 'training' check (eval_type in ('small_game','technical','match','training','other')),
   technique text check (technique in ('A','B','C')),
   game_intelligence text check (game_intelligence in ('A','B','C')),
   athletic text check (athletic in ('A','B','C')),

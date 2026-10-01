@@ -565,8 +565,26 @@ async function renderParentForecast(){
 }
 
 async function renderCoachCheckin(){
-  const recent=state.events.filter(e=>e.event_date>=isoLocal(addDays(new Date(),-21))).slice().reverse();
-  const selected=state.selectedEvent||recent[0]?.id||state.events.at(-1)?.id;
+  const eligible=state.events.filter(e=>e.type==='training'||e.type==='match');
+  const today=todayISO();
+  let selected=state.selectedEvent && eligible.some(e=>e.id===state.selectedEvent) ? state.selectedEvent : null;
+
+  if(!selected && eligible.length){
+    const todayEvent=eligible.find(e=>e.event_date===today);
+    if(todayEvent){
+      selected=todayEvent.id;
+    }else{
+      const todayMs=new Date(today+'T12:00:00').getTime();
+      const nearest=eligible.slice().sort((a,b)=>{
+        const da=Math.abs(new Date(a.event_date+'T12:00:00').getTime()-todayMs);
+        const db=Math.abs(new Date(b.event_date+'T12:00:00').getTime()-todayMs);
+        if(da!==db)return da-db;
+        return a.event_date.localeCompare(b.event_date);
+      })[0];
+      selected=nearest?.id||null;
+    }
+  }
+
   state.selectedEvent=selected;
   if(!selected){
     $('#attendanceBody').innerHTML='<div class="empty panel">Aucun événement disponible.</div>';
@@ -576,7 +594,7 @@ async function renderCoachCheckin(){
   const {data:actual,error}=await sb.from('attendance').select('*').eq('event_id',selected);
   if(error) toast(error.message,false);
   const presentIds=new Set((actual||[]).filter(x=>x.status==='present').map(x=>x.player_id));
-  const opts=state.events.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${fmtFullDate(x.event_date)} · ${esc(x.title)}</option>`).join('');
+  const opts=eligible.slice().sort((a,b)=>b.event_date.localeCompare(a.event_date)).map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${fmtFullDate(x.event_date)} · ${esc(x.title)}</option>`).join('');
   $('#attendanceBody').innerHTML=`
     <div class="panel">
       <div class="form-grid">
@@ -776,9 +794,335 @@ async function renderPlayers(){ if(!isCoach()){go('dashboard');return;} await lo
 function playerModal(){openModal(`<h2>Ajouter un joueur</h2><form id="playerForm" class="stack"><label>Prénom<input id="plFirst" required /></label><label>Nom (optionnel)<input id="plLast" /></label><label>Numéro (optionnel)<input id="plNumber" type="number" min="0" max="99" /></label><button class="btn primary">Ajouter</button></form>`);$('#playerForm').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;setBusy(btn,true);const{error}=await sb.from('players').insert({team_id:state.team.id,first_name:$('#plFirst').value.trim(),last_name:$('#plLast').value.trim()||null,number:$('#plNumber').value?Number($('#plNumber').value):null});setBusy(btn,false);if(error)return toast(error.message,false);closeModal();toast('Joueur ajouté');await loadCore();renderPlayers()}}
 async function generatePin(pid){ const p=state.players.find(x=>x.id===pid); const {data,error}=await sb.rpc('generate_player_pin',{p_player_id:pid}); if(error)return toast(error.message,false); openModal(`<h2>Code parent · ${esc(p?.first_name||'Joueur')}</h2><p>Communique ce code au parent. Il lui permettra de lier son compte à l'enfant.</p><div class="link-code">${esc(data)}</div><p class="muted">Un nouveau code remplace immédiatement l'ancien.</p><button class="btn primary full" id="copyPin">Copier le code</button>`); $('#copyPin').onclick=async()=>{await navigator.clipboard.writeText(String(data));toast('Code copié')}; }
 
-async function renderEvaluations(){ if(!isCoach()){go('dashboard');return;} const date=state.evalDate||todayISO(); const {data:evals}=await sb.from('evaluations').select('*').eq('eval_date',date).in('player_id',state.players.map(p=>p.id)); const map=new Map((evals||[]).map(x=>[x.player_id,x])); const sel=(pid,field,val)=>`<select class="eval-select" data-eval="${pid}" data-field="${field}"><option value=""></option>${['A','B','C'].map(x=>`<option ${val===x?'selected':''}>${x}</option>`).join('')}</select>`; $('#content').innerHTML=`<div class="panel"><div class="form-grid"><label>Date d'évaluation<input id="evalDate" type="date" value="${date}" /></label><div><strong>Barème</strong><div class="muted">A = 3 points · B = 2 · C = 1 · Score /12</div></div></div></div><div class="section-head"><h3>Grille d'évaluation</h3><button class="btn primary" id="saveEvals">Enregistrer toutes les évaluations</button></div><div class="table-wrap"><table><thead><tr><th>Joueur</th><th>Technique<br><small>Contrôle, passe, dribble</small></th><th>Intelligence de jeu<br><small>Tête levée, choix</small></th><th>Athlétique<br><small>Vitesse, coordination</small></th><th>Mental & attitude<br><small>Écoute, engagement</small></th><th>Score /12</th><th>Niveau</th><th>Remarque</th></tr></thead><tbody>${state.players.map(p=>{const v=map.get(p.id)||{};return `<tr data-eval-row="${p.id}"><td><strong>${esc(p.first_name)}</strong></td><td>${sel(p.id,'technique',v.technique)}</td><td>${sel(p.id,'game_intelligence',v.game_intelligence)}</td><td>${sel(p.id,'athletic',v.athletic)}</td><td>${sel(p.id,'attitude',v.attitude)}</td><td class="score" data-score="${p.id}">${v.score_total??'—'}</td><td>${sel(p.id,'overall_level',v.overall_level)}</td><td><input data-remark="${p.id}" value="${esc(v.remarks||'')}" /></td></tr>`}).join('')}</tbody></table></div>`; $('#evalDate').onchange=e=>{state.evalDate=e.target.value;renderEvaluations()}; $$('[data-eval]').forEach(s=>s.onchange=()=>updateEvalScore(s.dataset.eval)); $('#saveEvals').onclick=saveEvaluations; state.players.forEach(p=>updateEvalScore(p.id)); }
-function evalPoints(v){return v==='A'?3:v==='B'?2:v==='C'?1:0} function updateEvalScore(pid){ const vals=$$(`[data-eval="${pid}"]`).filter(x=>x.dataset.field!=='overall_level').map(x=>x.value); const score=vals.some(Boolean)?vals.reduce((a,v)=>a+evalPoints(v),0):'—'; $(`[data-score="${pid}"]`).textContent=score; }
-async function saveEvaluations(){ const btn=$('#saveEvals');setBusy(btn,true);const date=$('#evalDate').value; const rows=state.players.map(p=>{const get=f=>$(`[data-eval="${p.id}"][data-field="${f}"]`).value||null;const vals=['technique','game_intelligence','athletic','attitude'].map(get);const any=vals.some(Boolean)||get('overall_level')||$(`[data-remark="${p.id}"]`).value.trim(); if(!any)return null; return {player_id:p.id,eval_date:date,technique:vals[0],game_intelligence:vals[1],athletic:vals[2],attitude:vals[3],score_total:vals.reduce((a,v)=>a+evalPoints(v),0),overall_level:get('overall_level'),remarks:$(`[data-remark="${p.id}"]`).value.trim()||null,evaluated_by:state.user.id,updated_at:new Date().toISOString()}; }).filter(Boolean); const {error}=rows.length?await sb.from('evaluations').upsert(rows,{onConflict:'player_id,eval_date'}):{error:null};setBusy(btn,false);if(error)return toast(error.message,false);toast('Évaluations enregistrées'); }
+function evalPoints(v){return v==='A'?3:v==='B'?2:v==='C'?1:0}
+function pointsToGrade(v){
+  if(v==null || Number.isNaN(Number(v))) return '—';
+  const n=Number(v);
+  return n>=2.5?'A':n>=1.5?'B':'C';
+}
+function scoreToLevel(score){
+  if(score==null || Number.isNaN(Number(score))) return {code:'—',label:'Non évalué',cls:'pending'};
+  const s=Number(score);
+  if(s>=10) return {code:'A',label:'Confirmé',cls:'present'};
+  if(s>=7) return {code:'B',label:'Intermédiaire',cls:'maybe'};
+  return {code:'C',label:'Apprentissage',cls:'absent'};
+}
+function evalTypeLabel(v){
+  return ({
+    small_game:'Jeu réduit 3v3 / 4v4',
+    technical:'Atelier technique',
+    match:'Match',
+    training:'Entraînement général',
+    other:'Autre'
+  })[v]||'Entraînement général';
+}
+function monthKey(d){return d.slice(0,7)}
+function monthLabel(ym){
+  const [y,m]=ym.split('-').map(Number);
+  return new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(new Date(y,m-1,1));
+}
+
+async function renderEvaluations(){
+  if(!isCoach()){go('dashboard');return;}
+  state.evalTab=state.evalTab||'summary';
+  state.evalMonth=state.evalMonth||todayISO().slice(0,7);
+
+  $('#content').innerHTML=`
+    <div class="attendance-tabs">
+      <button class="tab-btn ${state.evalTab==='summary'?'active':''}" data-eval-tab="summary">Synthèse</button>
+      <button class="tab-btn ${state.evalTab==='session'?'active':''}" data-eval-tab="session">Nouvelle séance</button>
+      <button class="tab-btn ${state.evalTab==='history'?'active':''}" data-eval-tab="history">Historique</button>
+      <button class="btn ghost small" id="evalGuide" style="margin-left:auto">Guide des critères</button>
+    </div>
+    <div id="evalBody"></div>`;
+
+  $$('[data-eval-tab]').forEach(b=>b.onclick=()=>{state.evalTab=b.dataset.evalTab;renderEvaluations()});
+  $('#evalGuide').onclick=openEvaluationGuide;
+
+  if(state.evalTab==='summary') await renderEvaluationSummary();
+  if(state.evalTab==='session') await renderEvaluationSession();
+  if(state.evalTab==='history') await renderEvaluationHistory();
+}
+
+async function renderEvaluationSummary(){
+  const start=state.evalMonth+'-01';
+  const [y,m]=state.evalMonth.split('-').map(Number);
+  const endDate=new Date(y,m,0);
+  const end=`${y}-${String(m).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`;
+
+  const {data:evals,error}=await sb.from('evaluations')
+    .select('*')
+    .gte('eval_date',start)
+    .lte('eval_date',end)
+    .in('player_id',state.players.map(p=>p.id));
+  if(error) toast(error.message,false);
+
+  const all=evals||[];
+  const sessions=[...new Set(all.map(x=>x.eval_date))].sort();
+  const byPlayer=new Map();
+  state.players.forEach(p=>byPlayer.set(p.id,[]));
+  all.forEach(x=>byPlayer.get(x.player_id)?.push(x));
+
+  const prevMonth=()=>{
+    const d=new Date(y,m-2,1);state.evalMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;renderEvaluationSummary();
+  };
+  const nextMonth=()=>{
+    const d=new Date(y,m,1);state.evalMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;renderEvaluationSummary();
+  };
+
+  $('#evalBody').innerHTML=`
+    <div class="panel week-toolbar">
+      <button class="btn ghost small" id="prevEvalMonth">← Mois</button>
+      <strong>${monthLabel(state.evalMonth)}</strong>
+      <button class="btn ghost small" id="nextEvalMonth">Mois →</button>
+    </div>
+    <div class="cards">
+      <div class="stat"><div class="label">Séances d'évaluation</div><div class="value">${sessions.length}</div></div>
+      <div class="stat"><div class="label">Repère conseillé</div><div class="value" style="font-size:1rem">${sessions.length>=2?'Base suffisante':'Encore provisoire'}</div></div>
+      <div class="stat"><div class="label">Méthode</div><div class="value" style="font-size:1rem">2 à 3 séances</div></div>
+    </div>
+    ${sessions.length<2?`<div class="notice warning"><strong>Classement provisoire.</strong> Il est conseillé d'observer chaque joueur sur au moins 2 à 3 séances avant de retenir un groupe.</div>`:''}
+    <div class="section-head"><div><h3>Synthèse des joueurs</h3><span class="muted">Moyenne des évaluations du mois · groupe calculé automatiquement</span></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Joueur</th><th>Séances</th>
+        <th>Maîtrise technique</th><th>Prise d'information</th>
+        <th>Aisance athlétique</th><th>Mental & attitude</th>
+        <th>Score moyen /12</th><th>Groupe recommandé</th><th>Évolution</th>
+      </tr></thead>
+      <tbody>${state.players.map(p=>{
+        const rows=byPlayer.get(p.id)||[];
+        const avgField=f=>{
+          const vals=rows.map(r=>evalPoints(r[f])).filter(Boolean);
+          return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+        };
+        const avgs=['technique','game_intelligence','athletic','attitude'].map(avgField);
+        const score=avgs.every(v=>v===null)?null:avgs.reduce((a,v)=>a+(v||0),0);
+        const level=scoreToLevel(score);
+        const remarks=rows.filter(r=>r.remarks).sort((a,b)=>b.eval_date.localeCompare(a.eval_date));
+        return `<tr data-player-eval="${p.id}">
+          <td><button class="link-button" data-eval-player="${p.id}"><strong>${esc(p.first_name)}</strong></button></td>
+          <td>${rows.length}</td>
+          <td><span class="grade grade-${pointsToGrade(avgs[0])}">${pointsToGrade(avgs[0])}</span></td>
+          <td><span class="grade grade-${pointsToGrade(avgs[1])}">${pointsToGrade(avgs[1])}</span></td>
+          <td><span class="grade grade-${pointsToGrade(avgs[2])}">${pointsToGrade(avgs[2])}</span></td>
+          <td><span class="grade grade-${pointsToGrade(avgs[3])}">${pointsToGrade(avgs[3])}</span></td>
+          <td><strong>${score==null?'—':score.toFixed(1)}</strong></td>
+          <td><span class="availability-box ${level.cls}">${level.code} · ${level.label}</span></td>
+          <td>${remarks[0]?`<span class="muted">${esc(remarks[0].remarks)}</span>`:'<span class="muted">—</span>'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+
+  $('#prevEvalMonth').onclick=prevMonth;
+  $('#nextEvalMonth').onclick=nextMonth;
+  $$('[data-eval-player]').forEach(b=>b.onclick=()=>openPlayerEvaluationHistory(b.dataset.evalPlayer));
+}
+
+async function renderEvaluationSession(){
+  const date=state.evalDate||todayISO();
+  const {data:existing,error}=await sb.from('evaluations').select('*').eq('eval_date',date).in('player_id',state.players.map(p=>p.id));
+  if(error) toast(error.message,false);
+  const rows=existing||[];
+  const map=new Map(rows.map(x=>[x.player_id,x]));
+  const existingType=rows.find(x=>x.eval_type)?.eval_type||state.evalType||'training';
+  state.evalType=existingType;
+
+  const sel=(pid,field,val)=>`<select class="eval-select" data-eval="${pid}" data-field="${field}">
+    <option value="">—</option>
+    ${['A','B','C'].map(x=>`<option value="${x}" ${val===x?'selected':''}>${x}</option>`).join('')}
+  </select>`;
+
+  $('#evalBody').innerHTML=`
+    <div class="panel">
+      <div class="form-grid">
+        <label>Date de la séance<input id="evalDate" type="date" value="${date}" /></label>
+        <label>Type d'observation
+          <select id="evalType">
+            <option value="small_game">Jeu réduit 3v3 / 4v4</option>
+            <option value="technical">Atelier technique</option>
+            <option value="match">Match</option>
+            <option value="training">Entraînement général</option>
+            <option value="other">Autre</option>
+          </select>
+        </label>
+        <div><strong>Barème</strong><div class="muted">A = 3 · B = 2 · C = 1 · Score /12</div></div>
+      </div>
+    </div>
+    <div class="notice">
+      <strong>Classement automatique :</strong> 10–12 = A Confirmé · 7–9 = B Intermédiaire · 4–6 = C Apprentissage.
+    </div>
+    <div class="section-head">
+      <div><h3>Observation de la séance</h3><span class="muted">Le niveau final n'est pas choisi manuellement : il est calculé à partir des 4 critères.</span></div>
+      <button class="btn primary" id="saveEvals">Enregistrer la séance</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Joueur</th>
+        <th>Maîtrise technique<br><small>1re touche, conduite, passes, dribbles</small></th>
+        <th>Prise d'information<br><small>Tête levée, choix, placement</small></th>
+        <th>Aisance athlétique<br><small>Vitesse, coordination, agilité, duels</small></th>
+        <th>Mental & attitude<br><small>Écoute, concentration, équipe, effort</small></th>
+        <th>Score /12</th><th>Groupe séance</th><th>Remarque séance</th>
+      </tr></thead>
+      <tbody>${state.players.map(p=>{
+        const v=map.get(p.id)||{};
+        return `<tr data-eval-row="${p.id}">
+          <td><strong>${esc(p.first_name)}</strong></td>
+          <td>${sel(p.id,'technique',v.technique)}</td>
+          <td>${sel(p.id,'game_intelligence',v.game_intelligence)}</td>
+          <td>${sel(p.id,'athletic',v.athletic)}</td>
+          <td>${sel(p.id,'attitude',v.attitude)}</td>
+          <td class="score" data-score="${p.id}">—</td>
+          <td data-level="${p.id}"><span class="muted">—</span></td>
+          <td><input data-remark="${p.id}" value="${esc(v.remarks||'')}" placeholder="Observation / axe de travail" /></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+
+  $('#evalType').value=existingType;
+  $('#evalType').onchange=e=>state.evalType=e.target.value;
+  $('#evalDate').onchange=e=>{state.evalDate=e.target.value;renderEvaluationSession()};
+  $$('[data-eval]').forEach(s=>s.onchange=()=>updateEvalScore(s.dataset.eval));
+  state.players.forEach(p=>updateEvalScore(p.id));
+  $('#saveEvals').onclick=saveEvaluations;
+}
+
+function updateEvalScore(pid){
+  const vals=['technique','game_intelligence','athletic','attitude']
+    .map(f=>$(`[data-eval="${pid}"][data-field="${f}"]`)?.value||'');
+  const complete=vals.every(Boolean);
+  const any=vals.some(Boolean);
+  const score=any?vals.reduce((a,v)=>a+evalPoints(v),0):null;
+  $(`[data-score="${pid}"]`).textContent=score==null?'—':score;
+  const target=$(`[data-level="${pid}"]`);
+  if(!target)return;
+  if(!complete){
+    target.innerHTML=any?'<span class="muted">À compléter</span>':'<span class="muted">—</span>';
+    return;
+  }
+  const level=scoreToLevel(score);
+  target.innerHTML=`<span class="availability-box ${level.cls}">${level.code} · ${level.label}</span>`;
+}
+
+async function saveEvaluations(){
+  const btn=$('#saveEvals');
+  setBusy(btn,true);
+  const date=$('#evalDate').value;
+  const evalType=$('#evalType').value;
+  const rows=[];
+
+  for(const p of state.players){
+    const get=f=>$(`[data-eval="${p.id}"][data-field="${f}"]`)?.value||null;
+    const vals=['technique','game_intelligence','athletic','attitude'].map(get);
+    const remark=$(`[data-remark="${p.id}"]`).value.trim();
+    const any=vals.some(Boolean)||remark;
+    if(!any)continue;
+    if(!vals.every(Boolean)){
+      setBusy(btn,false);
+      return toast(`Complète les 4 critères pour ${p.first_name}, ou laisse toute sa ligne vide.`,false);
+    }
+    const score=vals.reduce((a,v)=>a+evalPoints(v),0);
+    const level=scoreToLevel(score);
+    rows.push({
+      player_id:p.id,
+      eval_date:date,
+      eval_type:evalType,
+      technique:vals[0],
+      game_intelligence:vals[1],
+      athletic:vals[2],
+      attitude:vals[3],
+      score_total:score,
+      overall_level:level.code,
+      remarks:remark||null,
+      evaluated_by:state.user.id,
+      updated_at:new Date().toISOString()
+    });
+  }
+
+  const {error}=rows.length
+    ? await sb.from('evaluations').upsert(rows,{onConflict:'player_id,eval_date'})
+    : {error:null};
+
+  setBusy(btn,false);
+  if(error)return toast(error.message,false);
+  toast(`Séance enregistrée : ${rows.length} joueur(s) évalué(s)`);
+  state.evalMonth=date.slice(0,7);
+  state.evalTab='summary';
+  await renderEvaluations();
+}
+
+async function renderEvaluationHistory(){
+  const {data:evals,error}=await sb.from('evaluations')
+    .select('*')
+    .in('player_id',state.players.map(p=>p.id))
+    .order('eval_date',{ascending:false});
+  if(error) toast(error.message,false);
+  const rows=evals||[];
+  const grouped=new Map();
+  rows.forEach(r=>{
+    if(!grouped.has(r.eval_date))grouped.set(r.eval_date,[]);
+    grouped.get(r.eval_date).push(r);
+  });
+  const sessions=[...grouped.entries()];
+  $('#evalBody').innerHTML=`
+    <div class="section-head"><div><h3>Historique des séances</h3><span class="muted">Toutes les observations enregistrées</span></div></div>
+    <div class="event-list">
+      ${sessions.length?sessions.map(([date,items])=>{
+        const type=items.find(x=>x.eval_type)?.eval_type||'training';
+        const scores=items.map(x=>x.score_total).filter(x=>x!=null);
+        const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null;
+        return `<div class="event-card">
+          <div class="event-title"><h4>${fmtFullDate(date)}</h4><span class="match-kind">${esc(evalTypeLabel(type))}</span></div>
+          <div class="event-meta"><span>${items.length} joueur(s) évalué(s)</span>${avg!=null?`<span>Score moyen équipe : ${avg.toFixed(1)}/12</span>`:''}</div>
+          <div class="event-actions"><button class="btn secondary small" data-edit-eval-date="${date}">Ouvrir / modifier</button></div>
+        </div>`;
+      }).join(''):'<div class="empty panel">Aucune évaluation enregistrée.</div>'}
+    </div>`;
+  $$('[data-edit-eval-date]').forEach(b=>b.onclick=()=>{state.evalDate=b.dataset.editEvalDate;state.evalTab='session';renderEvaluations()});
+}
+
+async function openPlayerEvaluationHistory(pid){
+  const p=state.players.find(x=>x.id===pid);
+  const {data,error}=await sb.from('evaluations').select('*').eq('player_id',pid).order('eval_date',{ascending:false});
+  if(error)return toast(error.message,false);
+  const rows=data||[];
+  openModal(`
+    <h2>${esc(p?.first_name||'Joueur')} · progression</h2>
+    <div class="event-list">
+      ${rows.length?rows.map(r=>{
+        const level=scoreToLevel(r.score_total);
+        return `<div class="event-card">
+          <div class="event-title"><h4>${fmtFullDate(r.eval_date)}</h4><span class="availability-box ${level.cls}">${level.code} · ${level.label}</span></div>
+          <div class="event-meta">
+            <span>${esc(evalTypeLabel(r.eval_type))}</span>
+            <span>Technique ${r.technique}</span><span>Prise d'info ${r.game_intelligence}</span>
+            <span>Athlétique ${r.athletic}</span><span>Mental ${r.attitude}</span>
+            <span><strong>${r.score_total}/12</strong></span>
+          </div>
+          ${r.remarks?`<div class="muted">${esc(r.remarks)}</div>`:''}
+        </div>`;
+      }).join(''):'<div class="empty">Aucune évaluation.</div>'}
+    </div>`);
+}
+
+function openEvaluationGuide(){
+  openModal(`
+    <h2>Guide des critères U10</h2>
+    <div class="guide-grid">
+      <div class="panel"><h3>⚽ Maîtrise technique</h3><p>Première touche et contrôle orienté, conduite des deux pieds, précision des passes courtes et aisance dans les duels/dribbles.</p></div>
+      <div class="panel"><h3>👀 Intelligence de jeu / prise d'information</h3><p>Tête levée avant réception, choix passe ou dribble au bon moment, rapidité de décision et compréhension du placement.</p></div>
+      <div class="panel"><h3>🏃 Aisance athlétique</h3><p>Vitesse, coordination globale, agilité, équilibre et engagement physique dans les duels.</p></div>
+      <div class="panel"><h3>🧠 Mental & attitude</h3><p>Écoute, concentration, esprit d'équipe, combativité et régularité dans l'effort.</p></div>
+    </div>
+    <div class="panel">
+      <h3>Repères de groupe</h3>
+      <p><strong>A · Confirmé — 10 à 12 :</strong> techniquement à l'aise, tête levée, bons choix rapides, autonomie et combativité.</p>
+      <p><strong>B · Intermédiaire — 7 à 9 :</strong> bonnes bases mais jeu encore irrégulier, manque parfois de rapidité ou de régularité en match.</p>
+      <p><strong>C · Apprentissage — 4 à 6 :</strong> fondamentaux encore à développer : coordination, conduite sous pression et compréhension de l'espace.</p>
+      <p class="muted">Conseil : observer sur 2 à 3 séances, notamment en jeu réduit 3v3/4v4 et lors d'un atelier technique. Les groupes restent évolutifs.</p>
+    </div>`);
+}
 
 async function renderSettings(){
   $('#content').innerHTML=`
