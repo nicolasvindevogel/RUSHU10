@@ -205,3 +205,15 @@ Correctif spécifique iOS :
 IMPORTANT : sur un iPhone qui avait déjà ajouté l'app avec l'icône « U »,
 supprimer l'ancienne icône de l'écran d'accueil, rouvrir le site dans Safari,
 puis refaire **Partager > Sur l'écran d'accueil > Ajouter**.
+
+
+## v17 — Correctif affichage PWA iPhone
+Aucun SQL supplémentaire.
+
+- prise en charge des zones sûres iPhone (`safe-area-inset-top/bottom/left/right`) ;
+- le haut de l'application ne passe plus sous l'encoche / Dynamic Island ;
+- correction du mode barre d'état iOS : `black` au lieu de `black-translucent` ;
+- utilisation de `100dvh` / `-webkit-fill-available` pour éviter les sauts de hauteur en PWA ;
+- adaptation également des menus, modales, écran d'installation et bas de page.
+
+Sur un iPhone où l'ancienne PWA est déjà installée, il peut être nécessaire de la fermer complètement puis la rouvrir. Si le cache persiste, supprimer et réinstaller la PWA.
