@@ -1,7 +1,14 @@
 /* U10 Herseaux - PWA GitHub Pages + Supabase */
 const cfg = window.APP_CONFIG || {};
 const configured = cfg.SUPABASE_URL && !cfg.SUPABASE_URL.includes('VOTRE-PROJET') && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes('VOTRE_CLE');
-const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
+const sb = configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: window.localStorage
+  }
+}) : null;
 
 const state = { user:null, profile:null, identity:null, membership:null, team:null, players:[], events:[], page:'dashboard', month:new Date(), installPrompt:null, loginMode:null, attendanceTab:'parents', attendanceWeek:null, selectedEvent:null };
 const $ = (s, r=document) => r.querySelector(s);
@@ -66,12 +73,44 @@ async function go(page){
 
 const COACH_KEYS = new Set(['coach-nicolas','coach-thibaut','coach-maxime']);
 
+async function ensureRpcSession(){
+  const user=await ensureSession();
+  if(!user?.id) throw new Error("Session requise");
+  state.user=user;
+  return user;
+}
+
 async function ensureSession(){
-  let {data:{session}} = await sb.auth.getSession();
-  if(session?.user) return session.user;
+  if(!sb) throw new Error("Supabase n'est pas configuré.");
+
+  let {data:{session},error:getError} = await sb.auth.getSession();
+  if(getError) console.warn('getSession',getError);
+
+  if(session?.user){
+    state.user=session.user;
+    return session.user;
+  }
+
   const {data,error} = await sb.auth.signInAnonymously();
   if(error) throw error;
-  return data.user;
+
+  // Sur certains smartphones, la session n'est pas immédiatement relue
+  // après signInAnonymously(). On attend brièvement puis on la vérifie.
+  for(let i=0;i<6;i++){
+    const {data:{session:newSession}} = await sb.auth.getSession();
+    if(newSession?.user){
+      state.user=newSession.user;
+      return newSession.user;
+    }
+    await new Promise(r=>setTimeout(r,150));
+  }
+
+  if(data?.user){
+    state.user=data.user;
+    return data.user;
+  }
+
+  throw new Error("Impossible de créer la session sur ce téléphone.");
 }
 
 async function init(){
@@ -186,12 +225,37 @@ async function prepareIdentityLogin(){
     return;
   }
 
+  try{
+    await ensureRpcSession();
+  }catch(err){
+    console.error(err);
+    return toast("Impossible d'ouvrir une session sur ce téléphone : "+(err.message||err),false);
+  }
+
   const {data,error}=await sb.rpc('identity_login_status',{p_identity_key:key});
   if(error){
     console.error(error);
+    // Une session mobile peut parfois être expirée/stale : on retente une fois.
+    if(String(error.message||'').toLowerCase().includes('session requise')){
+      try{
+        await sb.auth.signOut({scope:'local'});
+      }catch(_){}
+      try{
+        await ensureRpcSession();
+        const retry=await sb.rpc('identity_login_status',{p_identity_key:key});
+        if(!retry.error){
+          return applyIdentityStatus(retry.data);
+        }
+      }catch(_){}
+    }
     return toast(error.message,false);
   }
 
+  return applyIdentityStatus(data);
+
+}
+
+function applyIdentityStatus(data){
   if(!data?.exists){
     return toast("Ce profil coach n'existe pas dans Supabase. Exécute SETUP_COACH.sql.", false);
   }
@@ -228,6 +292,13 @@ $('#identityForm').addEventListener('submit',async e=>{
 
   const btn=e.submitter;
   setBusy(btn,true,state.loginMode==='activate'?'Création…':'Connexion…');
+
+  try{
+    await ensureRpcSession();
+  }catch(err){
+    setBusy(btn,false);
+    return toast("Session impossible sur ce téléphone : "+(err.message||err),false);
+  }
 
   const fn=state.loginMode==='activate'?'activate_identity':'login_identity';
   const {data,error}=await sb.rpc(fn,{p_identity_key:key,p_pin:pin});

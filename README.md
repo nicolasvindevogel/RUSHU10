@@ -42,3 +42,12 @@ Cette mise à jour ajoute :
 - Dates affichées en français au format `01 octobre 2026` dans les listes de sélection et vues principales.
 - Calendrier : couleur distincte pour entraînement, match, tournoi et événement du club.
 - Le type `Autre` est affiché comme `Événement du club` dans l'interface.
+
+
+## v7 — Correction session smartphone
+- persistance de session Supabase explicitement activée ;
+- vérification/création de la session avant chaque appel de connexion coach ;
+- nouvelle tentative automatique si Supabase renvoie `Session requise` ;
+- cache PWA incrémenté pour forcer la mise à jour sur smartphone.
+
+Dans Supabase, **Anonymous Sign-Ins doit être activé** dans Authentication.
