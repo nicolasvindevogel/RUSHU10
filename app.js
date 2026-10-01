@@ -9,6 +9,7 @@ const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const fmtDate = d => new Intl.DateTimeFormat('fr-BE',{weekday:'short',day:'2-digit',month:'short'}).format(new Date(d+'T12:00:00'));
 const fmtLong = d => new Intl.DateTimeFormat('fr-BE',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(d+'T12:00:00'));
+const fmtFullDate = d => new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'long',year:'numeric'}).format(new Date(d+'T12:00:00'));
 const timeShort = t => t ? t.slice(0,5) : '';
 const todayISO = () => { const d=new Date(); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); };
 function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.borderColor=ok?'#2f6d42':'#7a3434'; t.classList.add('show'); clearTimeout(t._timer); t._timer=setTimeout(()=>t.classList.remove('show'),2800); }
@@ -267,7 +268,7 @@ function eventCard(e){
   return `<div class="event-card">
     <div class="event-title"><h4>${esc(e.title)}</h4>${eventTypePill(e.type)}</div>
     <div class="event-meta">
-      <span>📅 ${fmtLong(e.event_date)}</span><span>🕒 ${when}</span>
+      <span>📅 ${fmtFullDate(e.event_date)}</span><span>🕒 ${when}</span>
       ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
       ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}${opponent}
     </div>
@@ -343,7 +344,7 @@ function eventModal(e=null){
         <option value="training">Entraînement</option>
         <option value="match">Match</option>
         <option value="tournament">Tournoi</option>
-        <option value="other">Autre</option>
+        <option value="other">Événement du club</option>
       </select>
     </label>
     <label>Titre<input id="evTitle" required value="${esc(e?.title||'')}" placeholder="Ex. Entraînement U10" /></label>
@@ -504,7 +505,7 @@ async function renderCoachCheckin(){
   const {data:actual,error}=await sb.from('attendance').select('*').eq('event_id',selected);
   if(error) toast(error.message,false);
   const presentIds=new Set((actual||[]).filter(x=>x.status==='present').map(x=>x.player_id));
-  const opts=state.events.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${x.event_date} · ${esc(x.title)}</option>`).join('');
+  const opts=state.events.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${fmtFullDate(x.event_date)} · ${esc(x.title)}</option>`).join('');
   $('#attendanceBody').innerHTML=`
     <div class="panel">
       <div class="form-grid">
@@ -558,7 +559,7 @@ async function renderMatches(){
           <div class="match-main">
             <div class="event-title"><h3>Herseaux ${e.opponent?`- ${esc(e.opponent)}`:''}</h3><span class="match-kind ${e.match_kind==='friendly'?'friendly':''}">${e.match_kind==='friendly'?'Amical':'Championnat'}</span></div>
             <div class="event-meta">
-              <span>📅 ${fmtLong(e.event_date)}</span>
+              <span>📅 ${fmtFullDate(e.event_date)}</span>
               <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
               ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
               ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}

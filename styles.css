@@ -49,3 +49,31 @@
   .match-actions{grid-column:1/-1;justify-content:stretch}
   .match-actions .btn{flex:1}
 }
+
+
+/* === Couleurs calendrier v6 ===
+   Entraînement = vert
+   Match = rouge
+   Tournoi = violet
+   Événement du club / Autre = bleu
+*/
+.cal-event.training{
+  background:rgba(28,173,82,.22);
+  color:#75ef9d;
+  border-left:4px solid #1cad52;
+}
+.cal-event.match{
+  background:rgba(221,71,71,.20);
+  color:#ff8b8b;
+  border-left:4px solid #dd4747;
+}
+.cal-event.tournament{
+  background:rgba(145,87,214,.22);
+  color:#d2a8ff;
+  border-left:4px solid #9157d6;
+}
+.cal-event.other{
+  background:rgba(55,135,230,.22);
+  color:#91c4ff;
+  border-left:4px solid #3787e6;
+}
