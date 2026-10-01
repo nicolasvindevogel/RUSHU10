@@ -1,15 +1,36 @@
 {
-  "name": "U10 Herseaux - Coach & Présences",
+  "name": "U10 Herseaux",
   "short_name": "U10 Herseaux",
-  "description": "Gestion des présences, calendrier, matchs et évaluations des U10 Herseaux.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0a0f0c",
+  "background_color": "#111713",
   "theme_color": "#1cad52",
-  "orientation": "portrait-primary",
+  "description": "Application U10 Herseaux - calendrier, présences, messages et sondages",
   "icons": [
-    {"src":"assets/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"assets/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

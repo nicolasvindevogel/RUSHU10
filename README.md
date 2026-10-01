@@ -181,3 +181,13 @@ Lorsqu'un parent ouvre le lien sur smartphone sans avoir installé l'application
 - le bouton `Installer l'application` reste disponible dans le menu pour revoir les instructions.
 
 L'aide ne s'affiche pas quand l'application est déjà ouverte en mode PWA.
+
+
+## v15 — Icône officielle de l'application
+Aucun SQL supplémentaire.
+
+- l'installation PWA utilise désormais le logo Herseaux comme icône ;
+- icônes 192x192 et 512x512 pour Android ;
+- variantes `maskable` pour un rendu correct sur les lanceurs Android ;
+- icône 180x180 dédiée à l'écran d'accueil iPhone/iPad ;
+- métadonnées iOS ajoutées pour que l'app s'affiche comme `U10 Herseaux`.
