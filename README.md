@@ -191,3 +191,17 @@ Aucun SQL supplémentaire.
 - variantes `maskable` pour un rendu correct sur les lanceurs Android ;
 - icône 180x180 dédiée à l'écran d'accueil iPhone/iPad ;
 - métadonnées iOS ajoutées pour que l'app s'affiche comme `U10 Herseaux`.
+
+
+## v16 — Correctif icône iPhone
+Aucun SQL supplémentaire.
+
+Correctif spécifique iOS :
+- `apple-touch-icon.png` placé à la racine du site ;
+- ajout de `apple-touch-icon-precomposed.png` ;
+- liens iOS avec version `?v=16` pour contourner le cache Safari ;
+- icône iPhone opaque 180×180 avec le logo Herseaux.
+
+IMPORTANT : sur un iPhone qui avait déjà ajouté l'app avec l'icône « U »,
+supprimer l'ancienne icône de l'écran d'accueil, rouvrir le site dans Safari,
+puis refaire **Partager > Sur l'écran d'accueil > Ajouter**.
