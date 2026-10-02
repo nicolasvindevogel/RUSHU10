@@ -2000,6 +2000,45 @@ async function renderParentMatchImage(match, selectedIds){
     </div>`;
 }
 
+function trainingSessionGroups(docs){
+  const groups=new Map();
+  (docs||[]).forEach(doc=>{
+    const key=`${doc.session_date}|||${doc.title||'Séance d’entraînement'}`;
+    if(!groups.has(key)){
+      groups.set(key,{
+        key,
+        session_date:doc.session_date,
+        title:doc.title||'Séance d’entraînement',
+        notes:doc.notes||'',
+        docs:[]
+      });
+    }
+    const g=groups.get(key);
+    g.docs.push(doc);
+    if(!g.notes && doc.notes)g.notes=doc.notes;
+  });
+  return [...groups.values()].sort((a,b)=>
+    b.session_date.localeCompare(a.session_date) ||
+    a.title.localeCompare(b.title,'fr')
+  );
+}
+
+function trainingSessionListItem(session){
+  const d=new Date(session.session_date+'T12:00:00');
+  const day=String(d.getDate()).padStart(2,'0');
+  const month=new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(d).replace('.','');
+  const fileCount=session.docs.length;
+  const hasImage=session.docs.some(doc=>(doc.file_type||'').startsWith('image/'));
+  return `<button type="button" class="training-session-row" data-training-session="${esc(session.key)}">
+    <div class="training-session-date"><strong>${day}</strong><span>${month}</span></div>
+    <div class="training-session-summary">
+      <strong>${esc(session.title)}</strong>
+      <span>${hasImage?'🖼️ Image · ':''}${fileCount} fichier${fileCount>1?'s':''}${session.notes?' · explication disponible':''}</span>
+    </div>
+    <div class="training-session-arrow">›</div>
+  </button>`;
+}
+
 async function renderTrainingHub(){
   const month=new Date().getMonth()+1;
   const [{data:program,error:programError},{data:docs,error:docsError}]=await Promise.all([
@@ -2009,6 +2048,7 @@ async function renderTrainingHub(){
   if(programError)console.warn(programError);
   if(docsError)console.warn(docsError);
   state.trainingDocs=docs||[];
+  state.trainingSessions=trainingSessionGroups(state.trainingDocs);
 
   const programme=program||[];
   const current=programme.find(x=>x.month_num===month);
@@ -2036,50 +2076,103 @@ async function renderTrainingHub(){
       </div>
       <div class="panel">
         <h3>Ajouter une séance</h3>
-        <p class="muted">PDF, image, document Word, Excel ou autre fichier utile à la séance.</p>
-        <button class="btn primary" id="uploadTrainingBtn">+ Ajouter des fichiers</button>
+        <p class="muted">Ajoute l'explication de la séance et son image / document.</p>
+        <button class="btn primary" id="uploadTrainingBtn">+ Ajouter une séance</button>
       </div>
     </div>
 
     <div class="section-head">
-      <div><h3>Programme annuel</h3><span class="muted">Thèmes pédagogiques U10</span></div>
+      <div><h3>Séances d'entraînement</h3><span class="muted">${state.trainingSessions.length} séance(s) enregistrée(s)</span></div>
     </div>
-    <div class="programme-strip">
-      ${programme.map(p=>`<div class="programme-card ${p.month_num===month?'current':''}">
-        <small>${esc(p.month_label)}</small>
-        <strong>${esc(p.theme)}</strong>
-        <span>${esc(p.objectives)}</span>
-      </div>`).join('')}
+    <div class="training-session-list">
+      ${state.trainingSessions.length
+        ? state.trainingSessions.map(trainingSessionListItem).join('')
+        : '<div class="empty panel">Aucune séance enregistrée pour le moment.</div>'}
     </div>
 
-    <div class="section-head">
-      <div><h3>Fichiers de séances</h3><span class="muted">${state.trainingDocs.length} fichier(s)</span></div>
-    </div>
-    <div class="training-doc-list">
-      ${state.trainingDocs.length?state.trainingDocs.map(trainingDocCard).join(''):'<div class="empty panel">Aucun fichier de séance pour le moment.</div>'}
-    </div>`;
+    <details class="programme-compact">
+      <summary>Voir le programme annuel</summary>
+      <div class="programme-strip">
+        ${programme.map(p=>`<div class="programme-card ${p.month_num===month?'current':''}">
+          <small>${esc(p.month_label)}</small>
+          <strong>${esc(p.theme)}</strong>
+          <span>${esc(p.objectives)}</span>
+        </div>`).join('')}
+      </div>
+    </details>`;
 
   $('#uploadTrainingBtn').onclick=trainingUploadModal;
-  $$('[data-training-open]').forEach(b=>b.onclick=()=>openTrainingDocument(b.dataset.trainingOpen));
-  $$('[data-training-delete]').forEach(b=>b.onclick=()=>deleteTrainingDocument(b.dataset.trainingDelete));
+  $$('[data-training-session]').forEach(b=>b.onclick=()=>openTrainingSession(b.dataset.trainingSession));
 }
 
-function trainingDocCard(doc){
-  const ext=(doc.original_name||'').split('.').pop()?.toUpperCase()||'FICHIER';
-  return `<div class="training-doc-card">
-    <div class="file-badge">${esc(ext.slice(0,4))}</div>
-    <div class="training-doc-main">
-      <div class="event-title">
-        <h4>${esc(doc.title||doc.original_name)}</h4>
-        <span class="pill">${fmtFullDate(doc.session_date)}</span>
+async function openTrainingSession(key){
+  const session=(state.trainingSessions||[]).find(s=>s.key===key);
+  if(!session)return;
+
+  const files=await Promise.all(session.docs.map(async doc=>{
+    const {data,error}=await sb.storage.from('training-files').createSignedUrl(doc.storage_path,60*30);
+    return {...doc,signed_url:error?null:data?.signedUrl||null,error:error?.message||null};
+  }));
+
+  const images=files.filter(f=>(f.file_type||'').startsWith('image/') && f.signed_url);
+  const others=files.filter(f=>!(f.file_type||'').startsWith('image/'));
+
+  openModal(`
+    <div class="training-detail-head">
+      <div>
+        <small>SÉANCE D'ENTRAÎNEMENT</small>
+        <h2>${esc(session.title)}</h2>
+        <p class="muted">${fmtFullDate(session.session_date)}</p>
       </div>
-      <div class="muted">${esc(doc.original_name)}${doc.notes?' · '+esc(doc.notes):''}</div>
     </div>
-    <div class="training-doc-actions">
-      <button class="btn secondary small" data-training-open="${doc.id}">Ouvrir</button>
-      <button class="btn danger small" data-training-delete="${doc.id}">Supprimer</button>
-    </div>
-  </div>`;
+
+    ${session.notes?`
+      <div class="panel training-explanation">
+        <h3>Explication de la séance</h3>
+        <div class="training-notes-text">${esc(session.notes).replace(/\n/g,'<br>')}</div>
+      </div>
+    `:''}
+
+    ${images.length?`
+      <div class="training-image-gallery">
+        ${images.map(img=>`
+          <a href="${img.signed_url}" target="_blank" rel="noopener" class="training-image-link">
+            <img src="${img.signed_url}" alt="${esc(img.original_name||session.title)}" />
+          </a>
+        `).join('')}
+      </div>
+    `:''}
+
+    ${others.length?`
+      <div class="panel training-files-panel">
+        <h3>Documents</h3>
+        <div class="training-detail-files">
+          ${others.map(doc=>`
+            <div class="training-detail-file">
+              <div>
+                <strong>${esc(doc.original_name||'Document')}</strong>
+                ${doc.error?`<small class="muted">Impossible de générer le lien</small>`:''}
+              </div>
+              ${doc.signed_url?`<a class="btn secondary small" href="${doc.signed_url}" target="_blank" rel="noopener">Ouvrir</a>`:''}
+              <button class="btn danger small" data-training-delete-detail="${doc.id}">Supprimer</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `:''}
+
+    ${images.length?`
+      <div class="training-image-actions">
+        ${images.map(img=>`<button class="btn danger small" data-training-delete-detail="${img.id}">Supprimer ${esc(img.original_name||'image')}</button>`).join('')}
+      </div>
+    `:''}
+  `);
+
+  $$('[data-training-delete-detail]').forEach(b=>b.onclick=async()=>{
+    await deleteTrainingDocument(b.dataset.trainingDeleteDetail,true);
+    closeModal();
+    await renderTrainingHub();
+  });
 }
 
 function trainingUploadModal(){
@@ -2095,13 +2188,13 @@ function trainingUploadModal(){
       <label>Titre
         <input id="trainingTitle" required placeholder="Ex. Séance dribble 1v1" />
       </label>
-      <label>Remarque / objectif
-        <textarea id="trainingNotes" placeholder="Optionnel"></textarea>
+      <label>Explication / contenu de la séance
+        <textarea id="trainingNotes" class="training-long-text" placeholder="Décris ici les exercices, consignes, durées, variantes, matériel…"></textarea>
       </label>
-      <label>Fichiers
-        <input id="trainingFiles" type="file" multiple required />
+      <label>Image / documents
+        <input id="trainingFiles" type="file" multiple required accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
       </label>
-      <div class="notice">Tu peux sélectionner plusieurs fichiers en une fois. Ils resteront accessibles aux coachs depuis ce menu.</div>
+      <div class="notice">Tu peux ajouter l'image récapitulative de la séance et, si besoin, plusieurs documents.</div>
       <button class="btn primary" type="submit">Uploader la séance</button>
     </form>`);
 
@@ -2156,15 +2249,16 @@ async function openTrainingDocument(id){
   window.open(data.signedUrl,'_blank','noopener');
 }
 
-async function deleteTrainingDocument(id){
+async function deleteTrainingDocument(id,skipRender=false){
   const doc=state.trainingDocs.find(x=>x.id===id);
-  if(!doc||!confirm(`Supprimer "${doc.original_name}" ?`))return;
+  if(!doc||!confirm(`Supprimer "${doc.original_name}" ?`))return false;
   const {error:storageError}=await sb.storage.from('training-files').remove([doc.storage_path]);
-  if(storageError)return toast(storageError.message,false);
+  if(storageError){toast(storageError.message,false);return false}
   const {error}=await sb.from('training_documents').delete().eq('id',id);
-  if(error)return toast(error.message,false);
+  if(error){toast(error.message,false);return false}
   toast('Fichier supprimé');
-  await renderTrainingHub();
+  if(!skipRender)await renderTrainingHub();
+  return true;
 }
 
 async function renderPlayers(){ if(!isCoach()){go('dashboard');return;} await loadCore(); const {data:links}=await sb.from('player_guardians').select('player_id,user_id,profiles(full_name)'); const counts={};(links||[]).forEach(l=>counts[l.player_id]=(counts[l.player_id]||0)+1); $('#content').innerHTML=`<div class="section-head"><h3>Effectif U10</h3><button class="btn primary small" id="addPlayer">+ Joueur</button></div><div class="table-wrap"><table><thead><tr><th>Joueur</th><th>N°</th><th>Parents liés</th><th>Code parent</th><th>Action</th></tr></thead><tbody>${state.players.map(p=>`<tr><td><strong>${esc(p.first_name)} ${esc(p.last_name||'')}</strong></td><td>${p.number||'—'}</td><td>${counts[p.id]||0}</td><td><button class="btn ghost small" data-pin="${p.id}">Générer / remplacer</button></td><td><button class="btn danger small" data-disable="${p.id}">Désactiver</button></td></tr>`).join('')}</tbody></table></div>`; $('#addPlayer').onclick=()=>playerModal(); $$('[data-pin]').forEach(b=>b.onclick=()=>generatePin(b.dataset.pin)); $$('[data-disable]').forEach(b=>b.onclick=async()=>{if(!confirm('Désactiver ce joueur ?'))return;const{error}=await sb.from('players').update({active:false}).eq('id',b.dataset.disable);if(error)return toast(error.message,false);await loadCore();renderPlayers()}); }

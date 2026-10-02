@@ -295,3 +295,17 @@ Aucun nouveau SQL.
 - reprise automatique des informations du match et de la composition enregistrée ;
 - rappel de la procédure officielle ;
 - bouton pour copier rapidement la liste des joueurs.
+
+
+## v25 — Entraînements : liste compacte + fiche complète
+Aucun nouveau SQL.
+
+Le menu **Entraînements** est maintenant beaucoup plus compact :
+- une séance = une ligne avec sa date et son titre ;
+- les fichiers appartenant à la même date + même titre sont regroupés en une seule séance ;
+- toucher une séance ouvre sa fiche complète ;
+- la fiche affiche l'explication complète sans la tronquer ;
+- les images sont affichées directement dans la fiche ;
+- les PDF / Word / Excel restent accessibles comme documents ;
+- le programme annuel est replié dans `Voir le programme annuel` pour prendre moins de place ;
+- le champ d'explication à l'ajout d'une séance est agrandi pour pouvoir coller une séance détaillée complète.
