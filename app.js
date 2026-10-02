@@ -1165,12 +1165,15 @@ async function renderAttendance(){
     <div class="attendance-tabs">
       <button class="tab-btn ${state.attendanceTab==='parents'?'active':''}" id="tabParents">Prévisions parents</button>
       <button class="tab-btn ${state.attendanceTab==='coach'?'active':''}" id="tabCoach">Présence coach</button>
+      <button class="tab-btn ${state.attendanceTab==='history'?'active':''}" id="tabHistory">Historique mensuel</button>
     </div>
     <div id="attendanceBody"></div>`;
   $('#tabParents').onclick=()=>{state.attendanceTab='parents';renderAttendance()};
   $('#tabCoach').onclick=()=>{state.attendanceTab='coach';renderAttendance()};
+  $('#tabHistory').onclick=()=>{state.attendanceTab='history';renderAttendance()};
   if(state.attendanceTab==='parents') await renderParentForecast();
-  else await renderCoachCheckin();
+  else if(state.attendanceTab==='coach') await renderCoachCheckin();
+  else await renderAttendanceHistory();
 }
 
 async function renderParentForecast(){
@@ -1229,6 +1232,141 @@ async function renderParentForecast(){
     </table></div>`;
   $('#prevWeek').onclick=()=>{state.attendanceWeek=isoLocal(addDays(monday,-7));renderParentForecast()};
   $('#nextWeek').onclick=()=>{state.attendanceWeek=isoLocal(addDays(monday,7));renderParentForecast()};
+}
+
+
+function attendanceStatusIcon(status){
+  if(status==='present') return '<span class="attendance-mark present" title="Présent">✓</span>';
+  if(status==='absent') return '<span class="attendance-mark absent" title="Absent">×</span>';
+  if(status==='late') return '<span class="attendance-mark late" title="Retard">R</span>';
+  if(status==='excused') return '<span class="attendance-mark excused" title="Excusé">E</span>';
+  return '<span class="attendance-mark empty" title="Non enregistré">·</span>';
+}
+
+function attendanceMonthLabel(ym){
+  const [y,m]=ym.split('-').map(Number);
+  return new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(new Date(y,m-1,1));
+}
+
+async function renderAttendanceHistory(){
+  state.attendanceHistoryMonth = state.attendanceHistoryMonth || todayISO().slice(0,7);
+  const ym=state.attendanceHistoryMonth;
+  const [year,month]=ym.split('-').map(Number);
+  const start=`${ym}-01`;
+  const lastDay=new Date(year,month,0).getDate();
+  const end=`${ym}-${String(lastDay).padStart(2,'0')}`;
+
+  const events=state.events
+    .filter(e=>(e.type==='training'||e.type==='match'||e.type==='tournament') && e.event_date>=start && e.event_date<=end)
+    .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  let attendance=[];
+  if(events.length){
+    const {data,error}=await sb.from('attendance').select('*').in('event_id',events.map(e=>e.id));
+    if(error)toast(error.message,false);
+    attendance=data||[];
+  }
+
+  const {data:notes,error:notesError}=await sb.from('attendance_month_notes')
+    .select('*')
+    .eq('team_id',state.team.id)
+    .eq('month_key',ym);
+  if(notesError)console.warn(notesError);
+
+  const attendanceMap=new Map(attendance.map(a=>[`${a.event_id}:${a.player_id}`,a]));
+  const notesMap=new Map((notes||[]).map(n=>[n.player_id,n.note||'']));
+
+  const summaryFor=pid=>{
+    const vals=events.map(e=>attendanceMap.get(`${e.id}:${pid}`)?.status).filter(Boolean);
+    const present=vals.filter(s=>s==='present'||s==='late').length;
+    const absent=vals.filter(s=>s==='absent').length;
+    return {present,absent,total:vals.length};
+  };
+
+  $('#attendanceBody').innerHTML=`
+    <div class="panel attendance-month-toolbar">
+      <button class="btn ghost small" id="prevAttendanceMonth">←</button>
+      <div><small>HISTORIQUE</small><strong>${attendanceMonthLabel(ym)}</strong></div>
+      <button class="btn ghost small" id="nextAttendanceMonth">→</button>
+    </div>
+
+    <div class="attendance-history-legend">
+      <span><i class="attendance-mark present">✓</i> Présent</span>
+      <span><i class="attendance-mark absent">×</i> Absent</span>
+      <span><i class="attendance-mark late">R</i> Retard</span>
+      <span><i class="attendance-mark excused">E</i> Excusé</span>
+      <span><i class="attendance-mark empty">·</i> Non enregistré</span>
+    </div>
+
+    ${events.length?`
+      <div class="attendance-history-wrap">
+        <table class="attendance-history-table">
+          <thead>
+            <tr>
+              <th class="sticky-player">Joueur</th>
+              ${events.map(e=>{
+                const d=new Date(e.event_date+'T12:00:00');
+                const day=new Intl.DateTimeFormat('fr-BE',{weekday:'short'}).format(d).replace('.','');
+                const date=String(d.getDate()).padStart(2,'0');
+                return `<th class="attendance-event-head" title="${esc(e.title)}">
+                  <small>${day}</small><strong>${date}</strong><span>${e.type==='match'?'M':e.type==='tournament'?'T':'E'}</span>
+                </th>`;
+              }).join('')}
+              <th class="attendance-total-head">Prés.</th>
+              <th class="attendance-total-head">Abs.</th>
+              <th class="attendance-note-head">Remarque du mois</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.players.map(p=>{
+              const s=summaryFor(p.id);
+              return `<tr>
+                <td class="sticky-player"><strong>${esc(p.first_name)}</strong></td>
+                ${events.map(e=>`<td class="attendance-status-cell">${attendanceStatusIcon(attendanceMap.get(`${e.id}:${p.id}`)?.status)}</td>`).join('')}
+                <td class="attendance-count present-count">${s.present}</td>
+                <td class="attendance-count absent-count">${s.absent}</td>
+                <td class="attendance-note-cell">
+                  <input data-month-note="${p.id}" value="${esc(notesMap.get(p.id)||'')}" placeholder="Comportement, attitude, remarque…" />
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="attendance-history-actions">
+        <span class="muted">E = entraînement · M = match · T = tournoi</span>
+        <button class="btn primary" id="saveAttendanceMonthNotes">Enregistrer les remarques</button>
+      </div>
+    `:'<div class="empty panel">Aucun entraînement, match ou tournoi pour ce mois.</div>'}
+  `;
+
+  $('#prevAttendanceMonth').onclick=()=>{
+    const d=new Date(year,month-2,1);
+    state.attendanceHistoryMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    renderAttendanceHistory();
+  };
+  $('#nextAttendanceMonth').onclick=()=>{
+    const d=new Date(year,month,1);
+    state.attendanceHistoryMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    renderAttendanceHistory();
+  };
+
+  $('#saveAttendanceMonthNotes')?.addEventListener('click',async e=>{
+    const btn=e.currentTarget;
+    setBusy(btn,true);
+    const rows=state.players.map(p=>({
+      team_id:state.team.id,
+      player_id:p.id,
+      month_key:ym,
+      note:$(`[data-month-note="${p.id}"]`)?.value.trim()||null,
+      updated_by:state.user.id,
+      updated_at:new Date().toISOString()
+    }));
+    const {error}=await sb.from('attendance_month_notes').upsert(rows,{onConflict:'team_id,player_id,month_key'});
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+    toast('Remarques du mois enregistrées');
+  });
 }
 
 async function renderCoachCheckin(){

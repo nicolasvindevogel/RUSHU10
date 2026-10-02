@@ -217,3 +217,17 @@ Aucun SQL supplémentaire.
 - adaptation également des menus, modales, écran d'installation et bas de page.
 
 Sur un iPhone où l'ancienne PWA est déjà installée, il peut être nécessaire de la fermer complètement puis la rouvrir. Si le cache persiste, supprimer et réinstaller la PWA.
+
+
+## v18 — Historique mensuel des présences coach
+Exécuter une fois `supabase/UPGRADE_PRESENCES_HISTORIQUE_V18.sql`.
+
+Dans **Présences > Historique mensuel** :
+- navigation mois par mois ;
+- une ligne par joueur ;
+- une colonne compacte par entraînement / match / tournoi ;
+- vert = présent, rouge = absent, orange = retard/excusé, gris = non enregistré ;
+- compteurs Présent / Absent par joueur ;
+- colonne **Remarque du mois** pour noter comportement, attitude, progression ou autre observation ;
+- remarques enregistrées séparément par mois ;
+- tableau horizontal spécialement adapté au smartphone avec le prénom du joueur figé à gauche et la remarque figée à droite.

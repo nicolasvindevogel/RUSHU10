@@ -521,3 +521,6 @@ on conflict(team_id,month_num) do update set
 
 
 -- V13 : exécuter UPGRADE_SONDAGES_V13.sql pour activer les sondages.
+
+
+-- V18 : exécuter UPGRADE_PRESENCES_HISTORIQUE_V18.sql pour l'historique mensuel des présences.

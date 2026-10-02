@@ -649,3 +649,139 @@ body{
     max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
   }
 }
+
+
+/* === v18 Historique mensuel des présences === */
+.attendance-month-toolbar{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:10px;
+  align-items:center;
+  text-align:center;
+  margin-bottom:12px;
+}
+.attendance-month-toolbar div{display:grid;gap:2px}
+.attendance-month-toolbar small{font-size:.68rem;color:var(--muted);font-weight:900;letter-spacing:.07em}
+.attendance-month-toolbar strong{text-transform:capitalize}
+.attendance-history-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:center;
+  margin:10px 0 12px;
+  color:var(--muted);
+  font-size:.74rem;
+}
+.attendance-history-legend span{display:flex;align-items:center;gap:5px}
+.attendance-mark{
+  width:24px;
+  height:24px;
+  border-radius:7px;
+  display:inline-grid;
+  place-items:center;
+  font-weight:900;
+  font-style:normal;
+  font-size:.78rem;
+}
+.attendance-mark.present{background:rgba(28,173,82,.22);color:#6ceb97}
+.attendance-mark.absent{background:rgba(221,71,71,.20);color:#ff8585}
+.attendance-mark.late,.attendance-mark.excused{background:rgba(246,166,35,.20);color:#ffc55f}
+.attendance-mark.empty{background:rgba(255,255,255,.05);color:#77827a}
+.attendance-history-wrap{
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--panel);
+  max-height:68vh;
+}
+.attendance-history-table{
+  min-width:max-content;
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+.attendance-history-table th,
+.attendance-history-table td{
+  padding:7px 8px;
+  font-size:.76rem;
+  text-align:center;
+  white-space:nowrap;
+}
+.attendance-history-table thead th{
+  position:sticky;
+  top:0;
+  z-index:3;
+  background:#0f1812;
+}
+.attendance-history-table .sticky-player{
+  position:sticky;
+  left:0;
+  z-index:4;
+  text-align:left;
+  min-width:105px;
+  background:#111915;
+  box-shadow:1px 0 0 var(--line);
+}
+.attendance-history-table thead .sticky-player{
+  z-index:6;
+  background:#0f1812;
+}
+.attendance-event-head{
+  min-width:46px;
+  width:46px;
+}
+.attendance-event-head small,
+.attendance-event-head strong,
+.attendance-event-head span{
+  display:block;
+}
+.attendance-event-head small{font-size:.57rem;color:var(--muted);text-transform:capitalize}
+.attendance-event-head strong{font-size:.78rem;margin:2px 0}
+.attendance-event-head span{font-size:.55rem;color:#68e891}
+.attendance-status-cell{min-width:42px}
+.attendance-count{font-weight:900;min-width:44px}
+.present-count{color:#66e990}
+.absent-count{color:#ff8585}
+.attendance-note-head{min-width:260px;text-align:left!important}
+.attendance-note-cell{
+  min-width:260px;
+  position:sticky;
+  right:0;
+  background:#111915;
+  box-shadow:-1px 0 0 var(--line);
+  z-index:2;
+}
+.attendance-note-cell input{
+  min-width:235px;
+  padding:7px 9px;
+  font-size:.74rem;
+}
+.attendance-history-actions{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-top:10px;
+}
+@media(max-width:760px){
+  .attendance-tabs{
+    overflow-x:auto;
+    scrollbar-width:none;
+  }
+  .attendance-tabs::-webkit-scrollbar{display:none}
+  .attendance-tabs .tab-btn{
+    flex:0 0 auto;
+    padding:9px 12px;
+    font-size:.77rem;
+  }
+  .attendance-history-wrap{max-height:65dvh}
+  .attendance-history-table .sticky-player{min-width:88px}
+  .attendance-history-table th,
+  .attendance-history-table td{padding:6px 5px}
+  .attendance-event-head{min-width:38px;width:38px}
+  .attendance-mark{width:22px;height:22px;font-size:.72rem}
+  .attendance-note-head,.attendance-note-cell{min-width:210px}
+  .attendance-note-cell input{min-width:190px}
+  .attendance-history-actions{align-items:stretch;flex-direction:column}
+  .attendance-history-actions .btn{width:100%}
+}
