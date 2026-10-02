@@ -1569,9 +1569,9 @@ async function renderCoachCheckin(){
 }
 
 
-function matchCardHTML(e,{parent=false,highlight=false}={}){
+function matchCardHTML(e,{parent=false,highlight=false,past=false}={}){
   const d=new Date(e.event_date+'T12:00:00');
-  return `<div class="match-card ${parent?'parent-match-card':''} ${highlight?'next-match-highlight':''}">
+  return `<div class="match-card ${parent?'parent-match-card':''} ${highlight?'next-match-highlight':''} ${past?'past-match-card':''}">
     <div class="match-date"><span>${d.getDate()}</span><small>${new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(d)}</small></div>
     <div class="match-main">
       <div class="event-title">
@@ -1590,6 +1590,7 @@ function matchCardHTML(e,{parent=false,highlight=false}={}){
       ${parent
         ? `<button class="btn primary small" data-parent-lineup="${e.id}">Composition</button>`
         : `<button class="btn ghost small" data-match-lineup="${e.id}">Composition</button>
+           <button class="btn ghost small" data-matchsheet="${e.id}">Feuille de match</button>
            <button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>`}
     </div>
   </div>`;
@@ -1598,9 +1599,14 @@ function matchCardHTML(e,{parent=false,highlight=false}={}){
 async function renderMatches(){
   await loadCore();
   const today=todayISO();
+
   const upcoming=state.events
     .filter(e=>e.type==='match' && e.event_date>=today)
     .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  const past=state.events
+    .filter(e=>e.type==='match' && e.event_date<today)
+    .sort((a,b)=>b.event_date.localeCompare(a.event_date)||(b.start_time||'').localeCompare(a.start_time||''));
 
   const next=upcoming[0]||null;
   const rest=upcoming.slice(1);
@@ -1626,10 +1632,23 @@ async function renderMatches(){
       <div class="match-list">
         ${rest.length?rest.map(e=>matchCardHTML(e)).join(''):'<div class="empty panel">Aucun autre match planifié.</div>'}
       </div>
+    </div>
+
+    <div class="match-section">
+      <div class="match-section-title">
+        <div><small>HISTORIQUE</small><h3>Matchs passés</h3></div>
+        <span class="muted">${past.length} match(s)</span>
+      </div>
+      <div class="match-list past-match-list">
+        ${past.length?past.map(e=>matchCardHTML(e,{past:true})).join(''):'<div class="empty panel">Aucun match passé.</div>'}
+      </div>
     </div>`;
 
   $('#addMatch').onclick=()=>eventModal({type:'match',title:'Match',event_date:todayISO(),match_kind:'championship'});
   bindEventButtons();
+  $$('[data-matchsheet]').forEach(b=>b.onclick=()=>openMatchSheetPrep(
+    state.events.find(e=>e.id===b.dataset.matchsheet)
+  ));
 }
 
 async function matchLineupModal(match){
@@ -1759,12 +1778,88 @@ async function generateMatchImage(match){
 }
 
 
+
+async function openMatchSheetPrep(match){
+  if(!match)return;
+
+  const {data:sel,error}=await sb.from('match_players')
+    .select('player_id,position_order')
+    .eq('event_id',match.id)
+    .order('position_order');
+
+  if(error)return toast(error.message,false);
+
+  const selectedIds=(sel||[]).map(x=>x.player_id);
+  const selectedPlayers=selectedIds
+    .map(id=>state.players.find(p=>p.id===id))
+    .filter(Boolean);
+
+  openModal(`
+    <h2>Feuille de match · préparation</h2>
+    <p class="muted">${fmtFullDate(match.event_date)} · Herseaux ${match.opponent?`- ${esc(match.opponent)}`:''}</p>
+
+    <div class="notice warning">
+      <strong>Important :</strong> ceci est une aide de préparation interne.
+      La feuille officielle d'un match de championnat reste la feuille digitale fédérale dans E-kickoff.
+    </div>
+
+    <div class="matchsheet-grid">
+      <div class="panel">
+        <small>MATCH</small>
+        <h3>${esc(match.title||'Match U10')}</h3>
+        <div class="matchsheet-info">
+          <span>📅 ${fmtFullDate(match.event_date)}</span>
+          <span>🕒 ${timeShort(match.start_time)||'Heure à préciser'}</span>
+          ${match.meeting_time?`<span>👥 RDV ${timeShort(match.meeting_time)}</span>`:''}
+          ${match.location?`<span>📍 ${esc(match.location)}</span>`:''}
+          ${match.opponent?`<span>⚽ Adversaire : ${esc(match.opponent)}</span>`:''}
+        </div>
+      </div>
+
+      <div class="panel">
+        <small>JOUEURS PRÉPARÉS</small>
+        <h3>${selectedPlayers.length} joueur(s)</h3>
+        ${selectedPlayers.length
+          ? `<div class="matchsheet-player-list">${selectedPlayers.map((p,i)=>`<span>${i+1}. ${esc(p.first_name)}${p.last_name?' '+esc(p.last_name):''}</span>`).join('')}</div>`
+          : `<div class="notice warning">Aucune composition n'est encore enregistrée pour ce match.</div>`}
+      </div>
+    </div>
+
+    <div class="panel matchsheet-procedure">
+      <h3>Procédure officielle</h3>
+      <div class="matchsheet-step"><b>1</b><span>Compléter la feuille de match digitale fédérale avant le match.</span></div>
+      <div class="matchsheet-step"><b>2</b><span>Vérifier les joueurs et les personnes inscrites sur la feuille.</span></div>
+      <div class="matchsheet-step"><b>3</b><span>La feuille doit être présentée à l'arbitre avant le début du match.</span></div>
+      <div class="matchsheet-step"><b>4</b><span>Après le match, l'arbitre complète et clôture la feuille digitale.</span></div>
+    </div>
+
+    ${selectedPlayers.length?`
+      <button class="btn secondary full" id="copyMatchSheetPlayers">Copier la liste des joueurs</button>
+    `:''}
+  `);
+
+  $('#copyMatchSheetPlayers')?.addEventListener('click',async()=>{
+    const txt=selectedPlayers.map((p,i)=>`${i+1}. ${p.first_name}${p.last_name?' '+p.last_name:''}`).join('\n');
+    try{
+      await navigator.clipboard.writeText(txt);
+      toast('Liste des joueurs copiée');
+    }catch(_){
+      toast("Impossible de copier automatiquement sur cet appareil.",false);
+    }
+  });
+}
+
 async function renderParentMatches(){
   await loadCore();
   const today=todayISO();
+
   const upcoming=state.events
     .filter(e=>e.type==='match' && e.event_date>=today)
     .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  const past=state.events
+    .filter(e=>e.type==='match' && e.event_date<today)
+    .sort((a,b)=>b.event_date.localeCompare(a.event_date)||(b.start_time||'').localeCompare(a.start_time||''));
 
   const next=upcoming[0]||null;
   const rest=upcoming.slice(1);
@@ -1788,6 +1883,16 @@ async function renderParentMatches(){
       </div>
       <div class="match-list">
         ${rest.length?rest.map(e=>matchCardHTML(e,{parent:true})).join(''):'<div class="empty panel">Aucun autre match planifié.</div>'}
+      </div>
+    </div>
+
+    <div class="match-section">
+      <div class="match-section-title">
+        <div><small>HISTORIQUE</small><h3>Matchs passés</h3></div>
+        <span class="muted">${past.length} match(s)</span>
+      </div>
+      <div class="match-list past-match-list">
+        ${past.length?past.map(e=>matchCardHTML(e,{parent:true,past:true})).join(''):'<div class="empty panel">Aucun match passé.</div>'}
       </div>
     </div>`;
 

@@ -279,3 +279,19 @@ Dans le menu **Matchs**, côté coach et côté parent :
 - les autres rencontres futures apparaissent ensuite dans **Matchs à venir** ;
 - l'ordre est chronologique à partir du jour actuel ;
 - le prochain match est visuellement mis en évidence.
+
+
+## v24 — Matchs passés + préparation feuille de match
+Aucun nouveau SQL.
+
+### Matchs
+- ajout d'une section **Matchs passés** sous les matchs à venir ;
+- les matchs passés sont classés du plus récent au plus ancien ;
+- les parents conservent l'accès à la composition des anciens matchs.
+
+### Feuille de match
+- ajout d'un bouton **Feuille de match** côté coach ;
+- il s'agit d'une aide de préparation interne et non d'un remplacement de la feuille fédérale ;
+- reprise automatique des informations du match et de la composition enregistrée ;
+- rappel de la procédure officielle ;
+- bouton pour copier rapidement la liste des joueurs.
