@@ -1,14 +1,14 @@
 {
-  "build": "v28",
-  "published_at": "2026-10-02T10:05:00+02:00",
+  "build": "v29",
+  "published_at": "2026-10-02T16:46:00+02:00",
   "roles": {
     "coach": {
-      "version": 3,
-      "message": "Vous pouvez maintenant supprimer définitivement un sondage depuis l'espace coach."
+      "version": 4,
+      "message": "Nouvelle section Objets trouvés : ajoutez facilement les photos et voyez quel joueur réclame chaque objet."
     },
     "parent": {
-      "version": 2,
-      "message": "Les images de composition affichent maintenant le lieu et l'adresse complète du match."
+      "version": 3,
+      "message": "Nouvelle section Objets trouvés : reconnaissez les affaires oubliées et indiquez directement si elles appartiennent à votre enfant."
     }
   }
 }

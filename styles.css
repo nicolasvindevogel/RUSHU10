@@ -1262,3 +1262,138 @@ body{
   .app-update-actions{display:grid;grid-template-columns:1fr 1fr}
   .app-update-actions .btn{width:100%}
 }
+
+
+/* === v29 Objets trouvés === */
+.lostfound-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:14px;
+}
+.lostfound-card{
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--panel);
+}
+.lostfound-card.returned{opacity:.72}
+.lostfound-photo{
+  position:relative;
+  aspect-ratio:4/3;
+  background:#080d0a;
+  overflow:hidden;
+}
+.lostfound-photo img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.lostfound-no-photo{
+  height:100%;
+  display:grid;
+  place-items:center;
+  color:var(--muted);
+}
+.lostfound-status{
+  position:absolute;
+  top:9px;
+  right:9px;
+  padding:5px 8px;
+  border-radius:999px;
+  background:rgba(10,18,13,.92);
+  color:#8aefaa;
+  font-size:.68rem;
+  font-weight:900;
+}
+.lostfound-status.returned{
+  color:#d4d8d5;
+}
+.lostfound-body{
+  display:grid;
+  gap:10px;
+  padding:12px;
+}
+.lostfound-body p{
+  margin:0;
+  line-height:1.4;
+}
+.lostfound-date{
+  color:var(--muted);
+  font-size:.76rem;
+}
+.lostfound-claims{
+  display:grid;
+  gap:6px;
+  border-top:1px solid var(--line);
+  padding-top:9px;
+}
+.lostfound-claims small{
+  color:var(--muted);
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.lostfound-player-names{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.lostfound-player-names span{
+  padding:6px 8px;
+  border-radius:9px;
+  background:#173321;
+  font-size:.8rem;
+  font-weight:800;
+}
+.lostfound-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.lostfound-actions .btn{
+  flex:1 1 auto;
+}
+.lostfound-returned{
+  margin-top:22px;
+}
+.lostfound-returned .lostfound-grid{
+  padding:12px;
+}
+.lostfound-mine-btn{
+  min-height:48px;
+  font-size:.95rem;
+}
+.lostfound-claimed{
+  margin:0;
+  font-size:.78rem;
+}
+@media(max-width:650px){
+  .lostfound-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+  .lostfound-body{
+    padding:9px;
+    gap:8px;
+  }
+  .lostfound-body p{
+    font-size:.8rem;
+  }
+  .lostfound-date{
+    font-size:.67rem;
+  }
+  .lostfound-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .parent-lostfound-grid .lostfound-mine-btn{
+    font-size:.82rem;
+    padding:10px 7px;
+  }
+}
+@media(max-width:390px){
+  .lostfound-grid{
+    grid-template-columns:1fr;
+  }
+}

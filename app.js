@@ -134,6 +134,7 @@ const NAV_COACH = [
   ['evaluations','★','Évaluations'],
   ['messages','💬','Messages'],
   ['polls','📊','Sondages'],
+  ['lostfound','🧢','Objets trouvés'],
   ['settings','⚙','Paramètres']
 ];
 const NAV_PARENT = [
@@ -142,6 +143,7 @@ const NAV_PARENT = [
   ['matches','⚽','Matchs'],
   ['contact','💬','Contacter les coachs'],
   ['polls','📊','Sondages'],
+  ['lostfound','🧢','Objets trouvés'],
   ['settings','⚙','Mon accès']
 ];
 const isCoach = () => state.membership?.role === 'coach';
@@ -159,6 +161,7 @@ function pageMeta(page){
     evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],
     messages:['Messages','Conversations privées avec les parents'],
     polls:['Sondages','Créer des questions et suivre les réponses des parents'],
+    lostfound:['Objets trouvés','Photos des objets oubliés et réclamations'],
     settings:['Paramètres','Compte et accès à l’équipe']
   };
   const parent={
@@ -167,6 +170,7 @@ function pageMeta(page){
     matches:['Matchs','Liste des matchs U10 et composition'],
     contact:['Contacter les coachs','Conversation privée avec le staff U10'],
     polls:['Sondages','Répondez aux questions concernant votre enfant'],
+    lostfound:['Objets trouvés','Reconnaissez les affaires oubliées par votre enfant'],
     settings:['Mon accès','Accès parent et notifications']
   };
   return (isCoach()?coach:parent)[page] || (isCoach()?coach.dashboard:parent.dashboard);
@@ -197,6 +201,7 @@ async function go(page){
   if(page==='messages' && isCoach()) await renderCoachMessages();
   if(page==='contact' && !isCoach()) await renderParentContact();
   if(page==='polls') await (isCoach()?renderCoachPolls():renderParentPolls());
+  if(page==='lostfound') await (isCoach()?renderCoachLostFound():renderParentLostFound());
   if(page==='settings') await renderSettings();
 }
 
@@ -2904,6 +2909,275 @@ async function openParentPoll(poll,pid,selected){
       closeModal();toast('Réponse enregistrée');await renderParentPolls();
     };
   }
+}
+
+
+async function fetchLostFoundItems(){
+  const {data,error}=await sb.from('lost_found_items')
+    .select('*')
+    .eq('team_id',state.team.id)
+    .order('status',{ascending:true})
+    .order('created_at',{ascending:false});
+  if(error){toast(error.message,false);return []}
+
+  const items=data||[];
+  await Promise.all(items.map(async item=>{
+    const {data:signed,error:signErr}=await sb.storage.from('lost-found').createSignedUrl(item.photo_path,60*30);
+    item.photo_url=signErr?null:signed?.signedUrl||null;
+  }));
+  return items;
+}
+
+async function renderCoachLostFound(){
+  const items=await fetchLostFoundItems();
+  let claims=[];
+  if(items.length){
+    const {data,error}=await sb.from('lost_found_claims')
+      .select('item_id,player_id,created_at')
+      .in('item_id',items.map(x=>x.id));
+    if(error)toast(error.message,false);
+    claims=data||[];
+  }
+
+  const playerMap=new Map(state.players.map(p=>[p.id,p]));
+  const claimsByItem=new Map();
+  claims.forEach(c=>{
+    if(!claimsByItem.has(c.item_id))claimsByItem.set(c.item_id,[]);
+    claimsByItem.get(c.item_id).push(c);
+  });
+
+  const active=items.filter(x=>x.status!=='returned');
+  const returned=items.filter(x=>x.status==='returned');
+
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div>
+        <h3>Objets trouvés</h3>
+        <span class="muted">Photographiez les affaires oubliées. Les parents peuvent les réclamer directement.</span>
+      </div>
+      <button class="btn primary" id="addLostFound">+ Ajouter des photos</button>
+    </div>
+
+    <div class="lostfound-grid">
+      ${active.length?active.map(item=>coachLostFoundCard(item,claimsByItem.get(item.id)||[],playerMap)).join(''):
+        '<div class="empty panel">Aucun objet en attente.</div>'}
+    </div>
+
+    ${returned.length?`
+      <details class="programme-compact lostfound-returned">
+        <summary>Objets rendus (${returned.length})</summary>
+        <div class="lostfound-grid">
+          ${returned.map(item=>coachLostFoundCard(item,claimsByItem.get(item.id)||[],playerMap,true)).join('')}
+        </div>
+      </details>`:''}
+  `;
+
+  $('#addLostFound').onclick=lostFoundUploadModal;
+  $$('[data-lostfound-return]').forEach(b=>b.onclick=()=>markLostFoundReturned(b.dataset.lostfoundReturn));
+  $$('[data-lostfound-reopen]').forEach(b=>b.onclick=()=>markLostFoundOpen(b.dataset.lostfoundReopen));
+  $$('[data-lostfound-delete]').forEach(b=>b.onclick=()=>deleteLostFoundItem(b.dataset.lostfoundDelete));
+}
+
+function coachLostFoundCard(item,claims,playerMap,returned=false){
+  const names=claims.map(c=>playerMap.get(c.player_id)?.first_name).filter(Boolean);
+  return `<div class="lostfound-card ${returned?'returned':''}">
+    <div class="lostfound-photo">
+      ${item.photo_url?`<img src="${item.photo_url}" alt="Objet trouvé" />`:'<div class="lostfound-no-photo">Photo indisponible</div>'}
+      ${returned?'<span class="lostfound-status returned">Rendu</span>':'<span class="lostfound-status">À récupérer</span>'}
+    </div>
+    <div class="lostfound-body">
+      <div class="lostfound-date">${fmtFullDate((item.found_at||item.created_at||'').slice(0,10))}</div>
+      ${item.description?`<p>${esc(item.description)}</p>`:''}
+      <div class="lostfound-claims">
+        <small>Réclamé par</small>
+        ${names.length
+          ? `<div class="lostfound-player-names">${names.map(n=>`<span>👤 ${esc(n)}</span>`).join('')}</div>`
+          : '<span class="muted">Personne pour le moment</span>'}
+      </div>
+      <div class="lostfound-actions">
+        ${returned
+          ? `<button class="btn ghost small" data-lostfound-reopen="${item.id}">Remettre en attente</button>`
+          : `<button class="btn secondary small" data-lostfound-return="${item.id}">✓ Objet rendu</button>`}
+        <button class="btn danger small" data-lostfound-delete="${item.id}">Supprimer</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function lostFoundUploadModal(){
+  openModal(`
+    <h2>Ajouter des objets trouvés</h2>
+    <form id="lostFoundForm" class="stack">
+      <label>Date
+        <input id="lostFoundDate" type="date" value="${todayISO()}" required />
+      </label>
+      <label>Petite description (optionnel)
+        <input id="lostFoundDescription" placeholder="Ex. veste noire, gourde, bonnet…" />
+      </label>
+      <label>Photos
+        <input id="lostFoundFiles" type="file" accept="image/*" capture="environment" multiple required />
+      </label>
+      <div class="notice">Vous pouvez prendre une photo directement avec le téléphone ou sélectionner plusieurs photos de la galerie. Chaque photo créera un objet séparé.</div>
+      <button class="btn primary" type="submit">Ajouter les objets</button>
+    </form>
+  `);
+
+  $('#lostFoundForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter;
+    const files=[...$('#lostFoundFiles').files];
+    if(!files.length)return toast('Ajoutez au moins une photo.',false);
+    setBusy(btn,true,'Envoi…');
+
+    const foundAt=$('#lostFoundDate').value;
+    const description=$('#lostFoundDescription').value.trim()||null;
+
+    for(const file of files){
+      const safe=(file.name||'photo.jpg').replace(/[^a-zA-Z0-9._-]+/g,'-');
+      const path=`${state.team.id}/${foundAt}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
+
+      const {error:uploadError}=await sb.storage.from('lost-found').upload(path,file,{
+        upsert:false,
+        contentType:file.type||'image/jpeg'
+      });
+      if(uploadError){
+        setBusy(btn,false);
+        return toast(`Envoi de la photo impossible : ${uploadError.message}`,false);
+      }
+
+      const {error:insertError}=await sb.from('lost_found_items').insert({
+        team_id:state.team.id,
+        photo_path:path,
+        description,
+        found_at:foundAt,
+        created_by:state.user.id
+      });
+      if(insertError){
+        await sb.storage.from('lost-found').remove([path]);
+        setBusy(btn,false);
+        return toast(insertError.message,false);
+      }
+    }
+
+    setBusy(btn,false);
+    closeModal();
+    toast(`${files.length} objet(s) ajouté(s)`);
+    await renderCoachLostFound();
+  };
+}
+
+async function markLostFoundReturned(id){
+  const {error}=await sb.from('lost_found_items')
+    .update({status:'returned',returned_at:new Date().toISOString()})
+    .eq('id',id)
+    .eq('team_id',state.team.id);
+  if(error)return toast(error.message,false);
+  toast('Objet marqué comme rendu');
+  await renderCoachLostFound();
+}
+
+async function markLostFoundOpen(id){
+  const {error}=await sb.from('lost_found_items')
+    .update({status:'open',returned_at:null})
+    .eq('id',id)
+    .eq('team_id',state.team.id);
+  if(error)return toast(error.message,false);
+  toast('Objet remis en attente');
+  await renderCoachLostFound();
+}
+
+async function deleteLostFoundItem(id){
+  const item=(await sb.from('lost_found_items').select('id,photo_path').eq('id',id).eq('team_id',state.team.id).maybeSingle()).data;
+  if(!item)return;
+  if(!confirm("Supprimer définitivement cet objet trouvé et sa photo ?"))return;
+
+  const {error:claimErr}=await sb.from('lost_found_claims').delete().eq('item_id',id);
+  if(claimErr)return toast(claimErr.message,false);
+
+  const {error}=await sb.from('lost_found_items').delete().eq('id',id).eq('team_id',state.team.id);
+  if(error)return toast(error.message,false);
+
+  await sb.storage.from('lost-found').remove([item.photo_path]).catch(()=>{});
+  toast('Objet supprimé');
+  await renderCoachLostFound();
+}
+
+async function renderParentLostFound(){
+  const pid=state.parentPlayerId;
+  const child=state.players.find(p=>p.id===pid);
+  if(!pid){
+    $('#content').innerHTML='<div class="notice warning">Aucun enfant lié à cet accès.</div>';
+    return;
+  }
+
+  const items=(await fetchLostFoundItems()).filter(x=>x.status!=='returned');
+  let claims=[];
+  if(items.length){
+    const {data,error}=await sb.from('lost_found_claims')
+      .select('item_id,player_id')
+      .eq('player_id',pid)
+      .in('item_id',items.map(x=>x.id));
+    if(error)toast(error.message,false);
+    claims=data||[];
+  }
+  const claimed=new Set(claims.map(x=>x.item_id));
+
+  $('#content').innerHTML=`
+    <div class="notice">
+      <strong>Objets trouvés</strong><br>
+      Si vous reconnaissez une affaire de <strong>${esc(child?.first_name||'votre enfant')}</strong>, appuyez simplement sur <strong>« C'est à moi »</strong>. Les coachs verront automatiquement le prénom de votre enfant.
+    </div>
+
+    <div class="lostfound-grid parent-lostfound-grid">
+      ${items.length?items.map(item=>parentLostFoundCard(item,claimed.has(item.id))).join(''):
+        '<div class="empty panel">Aucun objet trouvé en attente pour le moment.</div>'}
+    </div>
+  `;
+
+  $$('[data-lostfound-claim]').forEach(b=>b.onclick=()=>claimLostFoundItem(b.dataset.lostfoundClaim,pid));
+  $$('[data-lostfound-unclaim]').forEach(b=>b.onclick=()=>unclaimLostFoundItem(b.dataset.lostfoundUnclaim,pid));
+}
+
+function parentLostFoundCard(item,isClaimed){
+  return `<div class="lostfound-card parent">
+    <div class="lostfound-photo">
+      ${item.photo_url?`<img src="${item.photo_url}" alt="Objet trouvé" />`:'<div class="lostfound-no-photo">Photo indisponible</div>'}
+    </div>
+    <div class="lostfound-body">
+      <div class="lostfound-date">Trouvé le ${fmtFullDate((item.found_at||item.created_at||'').slice(0,10))}</div>
+      ${item.description?`<p>${esc(item.description)}</p>`:''}
+      ${isClaimed
+        ? `<div class="notice success lostfound-claimed">✓ Vous avez indiqué que cet objet appartient à votre enfant.</div>
+           <button class="btn ghost full" data-lostfound-unclaim="${item.id}">Annuler ma réponse</button>`
+        : `<button class="btn primary full lostfound-mine-btn" data-lostfound-claim="${item.id}">🙋 C'est à moi</button>`}
+    </div>
+  </div>`;
+}
+
+async function claimLostFoundItem(itemId,playerId){
+  const {error}=await sb.from('lost_found_claims').insert({
+    item_id:itemId,
+    player_id:playerId,
+    claimed_by:state.user.id
+  });
+  if(error){
+    if(String(error.message||'').toLowerCase().includes('duplicate')){
+      return renderParentLostFound();
+    }
+    return toast(error.message,false);
+  }
+  toast('Les coachs ont été prévenus');
+  await renderParentLostFound();
+}
+
+async function unclaimLostFoundItem(itemId,playerId){
+  const {error}=await sb.from('lost_found_claims')
+    .delete()
+    .eq('item_id',itemId)
+    .eq('player_id',playerId);
+  if(error)return toast(error.message,false);
+  toast('Réponse annulée');
+  await renderParentLostFound();
 }
 
 async function renderSettings(){

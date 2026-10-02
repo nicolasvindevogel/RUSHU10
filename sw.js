@@ -1,4 +1,4 @@
-const CACHE = 'u10-herseaux-v28-delete-polls';
+const CACHE = 'u10-herseaux-v29-lost-found';
 const ASSETS = ['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./logo.png',
   './assets/logo.png','./assets/icons/icon-192.png','./assets/icons/icon-512.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())));

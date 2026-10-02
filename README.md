@@ -347,3 +347,25 @@ Côté coach :
 - action irréversible.
 
 La modification est visible uniquement côté coach : seule `roles.coach.version` a été incrémentée dans `release.json`.
+
+
+## v29 — Objets trouvés
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_OBJETS_TROUVES_V29.sql`
+
+### Coach
+- nouveau menu **Objets trouvés** ;
+- ajout rapide d'une ou plusieurs photos depuis le téléphone ;
+- possibilité de prendre directement une photo avec l'appareil photo ;
+- description facultative et date ;
+- affichage du prénom des joueurs dont les parents ont cliqué **C'est à moi** ;
+- bouton **Objet rendu** ;
+- historique repliable des objets rendus ;
+- suppression possible.
+
+### Parent
+- galerie des objets encore disponibles ;
+- bouton **🙋 C'est à moi** ;
+- le joueur est identifié automatiquement grâce au compte parent ;
+- possibilité d'annuler la réponse en cas d'erreur.
+
+Les photos sont stockées dans un bucket Supabase privé `lost-found`.
