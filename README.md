@@ -231,3 +231,14 @@ Dans **Présences > Historique mensuel** :
 - colonne **Remarque du mois** pour noter comportement, attitude, progression ou autre observation ;
 - remarques enregistrées séparément par mois ;
 - tableau horizontal spécialement adapté au smartphone avec le prénom du joueur figé à gauche et la remarque figée à droite.
+
+
+## v19 — Remarques jour par jour dans les présences
+Aucun nouveau SQL.
+
+- les remarques utilisent le champ `attendance.notes` déjà présent ;
+- dans **Présence coach**, bouton `📝 Remarques` pour encoder rapidement les notes du jour pour tous les joueurs ;
+- dans **Historique mensuel**, la colonne de remarque mensuelle est supprimée pour garder le tableau compact ;
+- un petit `•` bleu sur une case indique qu'une remarque existe ce jour-là ;
+- toucher une case ouvre le détail du joueur pour cette date : statut + remarque du jour ;
+- affichage pensé pour smartphone : historique compact, remarques accessibles à la demande sans agrandir le tableau.

@@ -1267,14 +1267,6 @@ async function renderAttendanceHistory(){
     attendance=data||[];
   }
 
-  const {data:notes,error:notesError}=await sb.from('attendance_month_notes')
-    .select('*')
-    .eq('team_id',state.team.id)
-    .eq('month_key',ym);
-  if(notesError)console.warn(notesError);
-
-  const attendanceMap=new Map(attendance.map(a=>[`${a.event_id}:${a.player_id}`,a]));
-  const notesMap=new Map((notes||[]).map(n=>[n.player_id,n.note||'']));
 
   const summaryFor=pid=>{
     const vals=events.map(e=>attendanceMap.get(`${e.id}:${pid}`)?.status).filter(Boolean);
@@ -1314,7 +1306,6 @@ async function renderAttendanceHistory(){
               }).join('')}
               <th class="attendance-total-head">Prés.</th>
               <th class="attendance-total-head">Abs.</th>
-              <th class="attendance-note-head">Remarque du mois</th>
             </tr>
           </thead>
           <tbody>
@@ -1322,20 +1313,24 @@ async function renderAttendanceHistory(){
               const s=summaryFor(p.id);
               return `<tr>
                 <td class="sticky-player"><strong>${esc(p.first_name)}</strong></td>
-                ${events.map(e=>`<td class="attendance-status-cell">${attendanceStatusIcon(attendanceMap.get(`${e.id}:${p.id}`)?.status)}</td>`).join('')}
+                ${events.map(e=>{
+                  const a=attendanceMap.get(`${e.id}:${p.id}`);
+                  return `<td class="attendance-status-cell">
+                    <button class="attendance-day-btn ${a?.notes?'has-note':''}" data-attendance-detail="${e.id}" data-player="${p.id}" title="${a?.notes?'Remarque : '+esc(a.notes):'Voir / ajouter une remarque'}">
+                      ${attendanceStatusIcon(a?.status)}
+                      ${a?.notes?'<span class="note-dot">•</span>':''}
+                    </button>
+                  </td>`;
+                }).join('')}
                 <td class="attendance-count present-count">${s.present}</td>
                 <td class="attendance-count absent-count">${s.absent}</td>
-                <td class="attendance-note-cell">
-                  <input data-month-note="${p.id}" value="${esc(notesMap.get(p.id)||'')}" placeholder="Comportement, attitude, remarque…" />
-                </td>
               </tr>`;
             }).join('')}
           </tbody>
         </table>
       </div>
       <div class="attendance-history-actions">
-        <span class="muted">E = entraînement · M = match · T = tournoi</span>
-        <button class="btn primary" id="saveAttendanceMonthNotes">Enregistrer les remarques</button>
+        <span class="muted">E = entraînement · M = match · T = tournoi · • = remarque enregistrée</span>
       </div>
     `:'<div class="empty panel">Aucun entraînement, match ou tournoi pour ce mois.</div>'}
   `;
@@ -1351,22 +1346,103 @@ async function renderAttendanceHistory(){
     renderAttendanceHistory();
   };
 
-  $('#saveAttendanceMonthNotes')?.addEventListener('click',async e=>{
-    const btn=e.currentTarget;
+  $$('[data-attendance-detail]').forEach(b=>b.onclick=()=>openAttendanceDayDetail(
+    b.dataset.attendanceDetail,
+    b.dataset.player
+  ));
+
+}
+
+
+async function openAttendanceDayDetail(eventId,playerId){
+  const event=state.events.find(e=>e.id===eventId);
+  const player=state.players.find(p=>p.id===playerId);
+  const {data,error}=await sb.from('attendance')
+    .select('*')
+    .eq('event_id',eventId)
+    .eq('player_id',playerId)
+    .maybeSingle();
+  if(error)return toast(error.message,false);
+
+  openModal(`
+    <h2>${esc(player?.first_name||'Joueur')}</h2>
+    <p class="muted">${event?fmtFullDate(event.event_date):''} · ${esc(event?.title||'')}</p>
+    <div class="panel stack">
+      <label>Présence
+        <select id="attendanceDetailStatus">
+          <option value="present">Présent</option>
+          <option value="absent">Absent</option>
+          <option value="late">Retard</option>
+          <option value="excused">Excusé</option>
+        </select>
+      </label>
+      <label>Remarque du jour
+        <textarea id="attendanceDetailNote" placeholder="Comportement, attitude, blessure, progression, remarque…">${esc(data?.notes||'')}</textarea>
+      </label>
+      <button class="btn primary" id="saveAttendanceDetail">Enregistrer</button>
+    </div>`);
+  $('#attendanceDetailStatus').value=data?.status||'present';
+  $('#saveAttendanceDetail').onclick=async()=>{
+    const btn=$('#saveAttendanceDetail');
     setBusy(btn,true);
-    const rows=state.players.map(p=>({
-      team_id:state.team.id,
-      player_id:p.id,
-      month_key:ym,
-      note:$(`[data-month-note="${p.id}"]`)?.value.trim()||null,
-      updated_by:state.user.id,
+    const {error:saveError}=await sb.from('attendance').upsert({
+      event_id:eventId,
+      player_id:playerId,
+      status:$('#attendanceDetailStatus').value,
+      notes:$('#attendanceDetailNote').value.trim()||null,
+      marked_by:state.user.id,
       updated_at:new Date().toISOString()
-    }));
-    const {error}=await sb.from('attendance_month_notes').upsert(rows,{onConflict:'team_id,player_id,month_key'});
+    },{onConflict:'event_id,player_id'});
     setBusy(btn,false);
-    if(error)return toast(error.message,false);
-    toast('Remarques du mois enregistrées');
-  });
+    if(saveError)return toast(saveError.message,false);
+    closeModal();
+    toast('Présence et remarque enregistrées');
+    if(state.attendanceTab==='history')await renderAttendanceHistory();
+    else if(state.attendanceTab==='coach')await renderCoachCheckin();
+  };
+}
+
+async function openDayNotesModal(eventId){
+  const event=state.events.find(e=>e.id===eventId);
+  const {data,error}=await sb.from('attendance').select('*').eq('event_id',eventId);
+  if(error)return toast(error.message,false);
+  const map=new Map((data||[]).map(a=>[a.player_id,a]));
+
+  openModal(`
+    <h2>Remarques du jour</h2>
+    <p class="muted">${event?fmtFullDate(event.event_date):''} · ${esc(event?.title||'')}</p>
+    <div class="day-notes-list">
+      ${state.players.map(p=>{
+        const a=map.get(p.id);
+        return `<div class="day-note-row">
+          <div class="day-note-player">
+            <strong>${esc(p.first_name)}</strong>
+            ${attendanceStatusIcon(a?.status)}
+          </div>
+          <input data-day-note="${p.id}" value="${esc(a?.notes||'')}" placeholder="Ajouter une remarque…" />
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="btn primary full" id="saveDayNotes">Enregistrer les remarques</button>`);
+
+  $('#saveDayNotes').onclick=async()=>{
+    const btn=$('#saveDayNotes');setBusy(btn,true);
+    const rows=state.players.map(p=>{
+      const current=map.get(p.id);
+      return {
+        event_id:eventId,
+        player_id:p.id,
+        status:current?.status||'absent',
+        notes:$(`[data-day-note="${p.id}"]`).value.trim()||null,
+        marked_by:state.user.id,
+        updated_at:new Date().toISOString()
+      };
+    });
+    const {error:saveError}=await sb.from('attendance').upsert(rows,{onConflict:'event_id,player_id'});
+    setBusy(btn,false);
+    if(saveError)return toast(saveError.message,false);
+    closeModal();toast('Remarques enregistrées');await renderCoachCheckin();
+  };
 }
 
 async function renderCoachCheckin(){
@@ -1409,7 +1485,7 @@ async function renderCoachCheckin(){
     </div>
     <div class="section-head">
       <div><h3>Présence réelle</h3><span class="muted">Touchez un joueur pour le mettre présent. Case vide = absent.</span></div>
-      <div class="toolbar-group"><button class="btn ghost small" id="clearPresence">Tout vider</button><button class="btn primary" id="savePresence">Enregistrer</button></div>
+      <div class="toolbar-group"><button class="btn ghost small" id="dayNotes">📝 Remarques</button><button class="btn ghost small" id="clearPresence">Tout vider</button><button class="btn primary" id="savePresence">Enregistrer</button></div>
     </div>
     <div class="player-check-grid">
       ${state.players.map(p=>`<button type="button" class="player-check ${presentIds.has(p.id)?'present':''}" data-check-player="${p.id}">
@@ -1421,6 +1497,7 @@ async function renderCoachCheckin(){
   const refreshCount=()=>{$('#presenceCount').textContent=$$('.player-check.present').length};
   $$('[data-check-player]').forEach(b=>b.onclick=()=>{b.classList.toggle('present');b.querySelector('.check-dot').textContent=b.classList.contains('present')?'✓':'';refreshCount()});
   $('#clearPresence').onclick=()=>{$$('[data-check-player]').forEach(b=>{b.classList.remove('present');b.querySelector('.check-dot').textContent=''});refreshCount()};
+  $('#dayNotes').onclick=()=>openDayNotesModal(selected);
   $('#savePresence').onclick=async()=>{
     const btn=$('#savePresence');setBusy(btn,true);
     const selectedIds=new Set($$('.player-check.present').map(b=>b.dataset.checkPlayer));

@@ -785,3 +785,68 @@ body{
   .attendance-history-actions{align-items:stretch;flex-direction:column}
   .attendance-history-actions .btn{width:100%}
 }
+
+
+/* === v19 Remarques journalières compactes === */
+.attendance-day-btn{
+  position:relative;
+  width:32px;
+  height:32px;
+  padding:0;
+  border:0;
+  background:transparent;
+  border-radius:8px;
+  cursor:pointer;
+}
+.attendance-day-btn.has-note{
+  background:rgba(74,163,255,.07);
+}
+.note-dot{
+  position:absolute;
+  top:-3px;
+  right:-1px;
+  color:#4aa3ff;
+  font-size:1rem;
+  line-height:1;
+}
+.day-notes-list{
+  display:grid;
+  gap:8px;
+  max-height:58vh;
+  overflow:auto;
+  margin:12px 0;
+}
+.day-note-row{
+  display:grid;
+  grid-template-columns:120px 1fr;
+  gap:10px;
+  align-items:center;
+  border-bottom:1px solid var(--line);
+  padding:7px 0;
+}
+.day-note-player{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.day-note-row input{
+  padding:8px 10px;
+  font-size:.8rem;
+}
+.attendance-history-table .attendance-note-head,
+.attendance-history-table .attendance-note-cell{
+  display:none;
+}
+@media(max-width:760px){
+  .attendance-day-btn{
+    width:28px;
+    height:28px;
+  }
+  .day-note-row{
+    grid-template-columns:95px 1fr;
+    gap:8px;
+  }
+  .day-note-player strong{font-size:.82rem}
+  .day-note-row input{font-size:.75rem}
+}
