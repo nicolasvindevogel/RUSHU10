@@ -309,3 +309,17 @@ Le menu **Entraînements** est maintenant beaucoup plus compact :
 - les PDF / Word / Excel restent accessibles comme documents ;
 - le programme annuel est replié dans `Voir le programme annuel` pour prendre moins de place ;
 - le champ d'explication à l'ajout d'une séance est agrandi pour pouvoir coller une séance détaillée complète.
+
+
+## v26 — Mises à jour ciblées Coach / Parent
+Aucun SQL supplémentaire.
+
+Deux compteurs indépendants sont désormais présents dans `release.json` :
+- `roles.coach.version`
+- `roles.parent.version`
+
+Pour une modification uniquement visible par les coachs, augmenter uniquement la version `coach`.
+Pour une modification uniquement visible par les parents, augmenter uniquement la version `parent`.
+Pour une modification commune, augmenter les deux.
+
+Seul le profil concerné voit alors le bandeau **Nouvelle version disponible** avec **Plus tard** et **Mettre à jour**.

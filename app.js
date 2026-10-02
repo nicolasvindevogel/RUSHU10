@@ -2909,5 +2909,103 @@ async function renderSettings(){
   $('#settingsNotif')?.addEventListener('click',requestNotifications);
 }
 
-if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));
+// === v26 : mises à jour ciblées Coach / Parent =============================
+let updateCheckTimer=null;
+
+function currentUpdateRole(){
+  return isCoach()?'coach':'parent';
+}
+function updateSeenKey(role){
+  return `u10-release-seen-${role}`;
+}
+function hideUpdateBanner(){
+  $('#appUpdateBanner')?.classList.add('hidden');
+}
+function showUpdateBanner(role,releaseInfo){
+  const banner=$('#appUpdateBanner');
+  if(!banner)return;
+  const roleInfo=releaseInfo?.roles?.[role];
+  if(!roleInfo)return;
+
+  $('#appUpdateText').innerHTML=`
+    <strong>Nouvelle version disponible</strong>
+    <span>${esc(roleInfo.message||"Une mise à jour de l'application est disponible.")}</span>`;
+  banner.classList.remove('hidden');
+
+  $('#appUpdateLater').onclick=()=>hideUpdateBanner();
+  $('#appUpdateNow').onclick=async()=>{
+    const btn=$('#appUpdateNow');
+    setBusy(btn,true,'Mise à jour…');
+    try{
+      localStorage.setItem(updateSeenKey(role),String(roleInfo.version));
+      if('serviceWorker' in navigator){
+        const reg=await navigator.serviceWorker.getRegistration();
+        if(reg){
+          await reg.update().catch(()=>{});
+          await new Promise(r=>setTimeout(r,900));
+        }
+      }
+      const u=new URL(location.href);
+      u.searchParams.set('appupdate',Date.now());
+      location.replace(u.toString());
+    }catch(err){
+      setBusy(btn,false);
+      toast("La mise à jour n'a pas pu être lancée automatiquement. Fermez puis rouvrez l'application.",false);
+    }
+  };
+}
+
+async function checkRoleSpecificUpdate({initial=false}={}){
+  if(!state.identity || !state.membership)return;
+  const role=currentUpdateRole();
+  try{
+    const response=await fetch(`./release.json?t=${Date.now()}`,{
+      cache:'no-store',
+      headers:{'Cache-Control':'no-cache'}
+    });
+    if(!response.ok)return;
+    const info=await response.json();
+    const target=Number(info?.roles?.[role]?.version||0);
+    if(!target)return;
+
+    const key=updateSeenKey(role);
+    const raw=localStorage.getItem(key);
+    if(raw===null){
+      localStorage.setItem(key,String(target));
+      return;
+    }
+
+    const seen=Number(raw||0);
+    if(target>seen){
+      showUpdateBanner(role,info);
+    }else if(!initial){
+      hideUpdateBanner();
+    }
+  }catch(err){
+    console.warn('Vérification mise à jour',err);
+  }
+}
+
+async function registerAndWatchUpdates(){
+  if(!('serviceWorker' in navigator))return;
+  try{
+    const reg=await navigator.serviceWorker.register('./sw.js');
+    await reg.update().catch(()=>{});
+    setTimeout(()=>checkRoleSpecificUpdate({initial:true}),1800);
+
+    clearInterval(updateCheckTimer);
+    updateCheckTimer=setInterval(()=>checkRoleSpecificUpdate(),5*60*1000);
+
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible'){
+        reg.update().catch(()=>{});
+        checkRoleSpecificUpdate();
+      }
+    });
+  }catch(err){
+    console.warn('Service worker',err);
+  }
+}
+
+window.addEventListener('load',registerAndWatchUpdates);
 init();

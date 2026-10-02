@@ -1,0 +1,14 @@
+{
+  "build": "v26",
+  "published_at": "2026-10-02T08:45:00+02:00",
+  "roles": {
+    "coach": {
+      "version": 1,
+      "message": "Améliorations disponibles pour l'espace coach."
+    },
+    "parent": {
+      "version": 1,
+      "message": "Améliorations disponibles pour l'espace parent."
+    }
+  }
+}
