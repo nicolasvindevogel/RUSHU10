@@ -139,6 +139,7 @@ const NAV_COACH = [
 const NAV_PARENT = [
   ['dashboard','⌂','Accueil'],
   ['attendance','✓','Présences'],
+  ['matches','⚽','Matchs'],
   ['contact','💬','Contacter les coachs'],
   ['polls','📊','Sondages'],
   ['settings','⚙','Mon accès']
@@ -163,6 +164,7 @@ function pageMeta(page){
   const parent={
     dashboard:['Accueil','Calendrier et événements U10'],
     attendance:['Présences','Disponibilités de votre enfant'],
+    matches:['Matchs','Liste des matchs U10 et composition'],
     contact:['Contacter les coachs','Conversation privée avec le staff U10'],
     polls:['Sondages','Répondez aux questions concernant votre enfant'],
     settings:['Mon accès','Accès parent et notifications']
@@ -188,7 +190,7 @@ async function go(page){
   if(page==='calendar' && isCoach()) await renderCalendar();
   if(page==='attendance') await (isCoach()?renderAttendance():renderParentAttendance());
   if(page==='coachchild' && isCoach()) await renderCoachChild();
-  if(page==='matches' && isCoach()) await renderMatches();
+  if(page==='matches') await (isCoach()?renderMatches():renderParentMatches());
   if(page==='traininghub' && isCoach()) await renderTrainingHub();
   if(page==='players' && isCoach()) await renderPlayers();
   if(page==='evaluations' && isCoach()) await renderEvaluations();
@@ -1721,6 +1723,147 @@ async function generateMatchImage(match){
       }
     }catch(err){if(err.name!=='AbortError')toast(err.message||String(err),false)}
   };
+}
+
+
+async function renderParentMatches(){
+  await loadCore();
+  const matches=state.events
+    .filter(e=>e.type==='match')
+    .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div><h3>Matchs U10</h3><span class="muted">Calendrier des matchs et compositions</span></div>
+    </div>
+    <div class="match-list">
+      ${matches.length?matches.map(e=>`
+        <div class="match-card parent-match-card">
+          <div class="match-date">
+            <span>${new Date(e.event_date+'T12:00:00').getDate()}</span>
+            <small>${new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(new Date(e.event_date+'T12:00:00'))}</small>
+          </div>
+          <div class="match-main">
+            <div class="event-title">
+              <h3>Herseaux ${e.opponent?`· ${esc(e.opponent)}`:''}</h3>
+              <span class="pill ${e.match_kind==='friendly'?'orange':'green'}">${e.match_kind==='friendly'?'Amical':'Championnat'}</span>
+            </div>
+            <div class="event-meta">
+              <span>📅 ${fmtFullDate(e.event_date)}</span>
+              <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
+              ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
+              ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
+            </div>
+            ${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}
+          </div>
+          <div class="match-actions">
+            <button class="btn primary small" data-parent-lineup="${e.id}">Composition</button>
+          </div>
+        </div>`).join(''):'<div class="empty panel">Aucun match pour le moment.</div>'}
+    </div>`;
+
+  $$('[data-parent-lineup]').forEach(b=>b.onclick=()=>openParentMatchComposition(
+    state.events.find(e=>e.id===b.dataset.parentLineup)
+  ));
+}
+
+async function openParentMatchComposition(match){
+  if(!match) return;
+  const {data:sel,error}=await sb.from('match_players')
+    .select('player_id,position_order')
+    .eq('event_id',match.id)
+    .order('position_order');
+
+  if(error)return toast(error.message,false);
+
+  const selectedIds=(sel||[]).map(x=>x.player_id);
+
+  if(!selectedIds.length){
+    openModal(`
+      <h2>Composition · ${esc(match.opponent||'Match')}</h2>
+      <p class="muted">${fmtFullDate(match.event_date)} · ${timeShort(match.start_time)||'Heure à préciser'} ${match.location?'· '+esc(match.location):''}</p>
+      <div class="notice warning">Composition pas encore établie.</div>
+    `);
+    return;
+  }
+
+  openModal(`
+    <h2>Composition · ${esc(match.opponent||'Match')}</h2>
+    <p class="muted">${fmtFullDate(match.event_date)} · ${timeShort(match.start_time)||'Heure à préciser'} ${match.location?'· '+esc(match.location):''}</p>
+    <div id="parentMatchImageArea"><div class="empty panel">Génération de l'image…</div></div>
+  `);
+
+  await renderParentMatchImage(match, selectedIds);
+}
+
+async function renderParentMatchImage(match, selectedIds){
+  const players=state.players.filter(p=>selectedIds.includes(p.id));
+  const canvas=document.createElement('canvas');
+  canvas.width=1080;canvas.height=1350;
+  const ctx=canvas.getContext('2d');
+
+  ctx.fillStyle='#07130c';ctx.fillRect(0,0,1080,1350);
+  const grad=ctx.createLinearGradient(0,0,1080,1350);
+  grad.addColorStop(0,'rgba(28,173,82,.32)');grad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,1080,1350);
+
+  try{
+    const logo=await loadCanvasImage('./logo.png');
+    ctx.drawImage(logo,60,55,170,170);
+  }catch(_){}
+
+  ctx.fillStyle='#ffffff';
+  ctx.font='800 58px system-ui, sans-serif';
+  ctx.fillText('COMPOSITION DU MATCH',260,110);
+
+  ctx.fillStyle='rgba(255,255,255,.86)';
+  ctx.font='500 30px system-ui, sans-serif';
+  ctx.fillText(`U10 HERSEAUX · ${match.match_kind==='friendly'?'MATCH AMICAL':'CHAMPIONNAT'}`,260,156);
+
+  roundRect(ctx,60,245,960,250,28);
+  ctx.fillStyle='rgba(255,255,255,.05)';ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=2;ctx.stroke();
+
+  ctx.fillStyle='#43d56f';
+  ctx.font='800 54px system-ui, sans-serif';
+  ctx.fillText(`HERSEAUX ${match.opponent?`· ${match.opponent.toUpperCase()}`:''}`,90,320);
+
+  ctx.fillStyle='rgba(255,255,255,.88)';
+  ctx.font='500 28px system-ui, sans-serif';
+  ctx.fillText(`Date : ${fmtFullDate(match.event_date)}`,90,380);
+  ctx.fillText(`Heure : ${timeShort(match.start_time)||'À préciser'}`,90,420);
+  if(match.meeting_time) ctx.fillText(`Rendez-vous : ${timeShort(match.meeting_time)}`,90,460);
+  if(match.location) ctx.fillText(`Lieu : ${match.location}`,90,500);
+
+  ctx.fillStyle='#ffffff';
+  ctx.font='800 38px system-ui, sans-serif';
+  ctx.fillText('JOUEURS CONVOQUÉS',60,710);
+
+  const cols=2, colW=470, startY=790, rowH=58;
+  ctx.font='600 28px system-ui, sans-serif';
+  players.forEach((p,i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=60+col*colW,y=startY+row*rowH;
+    ctx.fillStyle='#43d56f';
+    ctx.beginPath();ctx.arc(x+12,y-9,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.fillText(p.first_name+(p.last_name?' '+p.last_name:''),x+35,y);
+  });
+
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  ctx.font='500 22px system-ui, sans-serif';
+  ctx.fillText('Royale Union Sportive Herseautoise · U10',60,1290);
+
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png',1));
+  const url=URL.createObjectURL(blob);
+
+  $('#parentMatchImageArea').innerHTML=`
+    <div class="generated-image">
+      <img src="${url}" alt="Composition du match" />
+      <div class="modal-actions">
+        <a class="btn secondary" href="${url}" download="U10-Herseaux-${(match.opponent||'match').replace(/[^a-z0-9]+/gi,'-')}.png">Télécharger l'image</a>
+      </div>
+    </div>`;
 }
 
 async function renderTrainingHub(){

@@ -937,3 +937,16 @@ body{
     flex:0 0 auto;
   }
 }
+
+
+/* === v22 Matchs côté parent === */
+.parent-match-card .match-actions{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+@media(max-width:760px){
+  .parent-match-card .match-actions .btn{
+    width:100%;
+  }
+}

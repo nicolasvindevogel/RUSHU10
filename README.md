@@ -258,3 +258,14 @@ Aucun SQL supplémentaire.
 Aucun SQL supplémentaire.
 
 Correction d'un bug introduit en v19/v20 : la table de correspondance des présences (`attendanceMap`) n'était plus créée avant l'affichage de l'historique mensuel, ce qui faisait planter silencieusement la page et la laissait vide.
+
+
+## v22 — Matchs accessibles aux parents
+Aucun nouveau SQL.
+
+- ajout du menu **Matchs** côté parent ;
+- les parents voient la liste des matchs U10 ;
+- bouton **Composition** sur chaque match ;
+- si la composition existe, l'image de composition s'affiche dans une fenêtre ;
+- si la composition n'a pas encore été faite, le parent voit le message **Composition pas encore établie** ;
+- possibilité de télécharger l'image affichée.
