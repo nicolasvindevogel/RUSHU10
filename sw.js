@@ -1,4 +1,4 @@
-const CACHE = 'u10-herseaux-v20-sidebar-swipe';
+const CACHE = 'u10-herseaux-v21-history-fix';
 const ASSETS = ['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./logo.png',
   './assets/logo.png','./assets/icons/icon-192.png','./assets/icons/icon-512.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())));

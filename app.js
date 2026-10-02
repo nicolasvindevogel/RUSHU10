@@ -1317,6 +1317,7 @@ async function renderAttendanceHistory(){
     attendance=data||[];
   }
 
+  const attendanceMap=new Map(attendance.map(a=>[`${a.event_id}:${a.player_id}`,a]));
 
   const summaryFor=pid=>{
     const vals=events.map(e=>attendanceMap.get(`${e.id}:${pid}`)?.status).filter(Boolean);

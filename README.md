@@ -252,3 +252,9 @@ Aucun SQL supplémentaire.
 - swipe vers la gauche pour refermer la sidebar ;
 - les gestes verticaux continuent à faire défiler le menu normalement ;
 - le bouton hamburger `☰` reste toujours disponible pour rouvrir la sidebar en portrait comme en paysage.
+
+
+## v21 — Correctif historique des présences
+Aucun SQL supplémentaire.
+
+Correction d'un bug introduit en v19/v20 : la table de correspondance des présences (`attendanceMap`) n'était plus créée avant l'affichage de l'historique mensuel, ce qui faisait planter silencieusement la page et la laissait vide.
