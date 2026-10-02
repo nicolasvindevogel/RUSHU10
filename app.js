@@ -498,6 +498,56 @@ $('#logoutBtn').onclick=async()=>{
 };
 $('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
 
+// v20 : fermeture de la sidebar par swipe vers la gauche sur smartphone/tablette.
+(function setupSidebarSwipe(){
+  const sidebar=$('#sidebar');
+  if(!sidebar)return;
+
+  let startX=0,startY=0,lastX=0,tracking=false;
+
+  sidebar.addEventListener('touchstart',e=>{
+    if(!sidebar.classList.contains('open'))return;
+    const t=e.touches[0];
+    startX=lastX=t.clientX;
+    startY=t.clientY;
+    tracking=true;
+    sidebar.classList.add('swiping');
+  },{passive:true});
+
+  sidebar.addEventListener('touchmove',e=>{
+    if(!tracking)return;
+    const t=e.touches[0];
+    lastX=t.clientX;
+    const dx=lastX-startX;
+    const dy=t.clientY-startY;
+
+    // Si le geste est surtout vertical, on laisse la sidebar défiler normalement.
+    if(Math.abs(dy)>Math.abs(dx)){
+      sidebar.style.transform='';
+      return;
+    }
+
+    if(dx<0){
+      sidebar.style.transform=`translateX(${Math.max(dx,-sidebar.offsetWidth)}px)`;
+    }
+  },{passive:true});
+
+  const finishSwipe=()=>{
+    if(!tracking)return;
+    tracking=false;
+    const dx=lastX-startX;
+    sidebar.classList.remove('swiping');
+    sidebar.style.transform='';
+
+    if(dx < -70){
+      sidebar.classList.remove('open');
+    }
+  };
+
+  sidebar.addEventListener('touchend',finishSwipe,{passive:true});
+  sidebar.addEventListener('touchcancel',finishSwipe,{passive:true});
+})();
+
 function eventTypePill(type){ const x={training:['green','Entraînement'],match:['blue','Match'],tournament:['orange','Tournoi'],other:['gray','Événement du club']}[type]||['gray',type]; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
 function statusPill(s){ const m={present:['green','Présent'],absent:['red','Absent'],maybe:['orange','Incertain'],excused:['orange','Excusé'],late:['orange','Retard']}; const x=m[s]||['gray','Pas de réponse']; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
 

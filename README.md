@@ -242,3 +242,13 @@ Aucun nouveau SQL.
 - un petit `•` bleu sur une case indique qu'une remarque existe ce jour-là ;
 - toucher une case ouvre le détail du joueur pour cette date : statut + remarque du jour ;
 - affichage pensé pour smartphone : historique compact, remarques accessibles à la demande sans agrandir le tableau.
+
+
+## v20 — Sidebar smartphone améliorée
+Aucun SQL supplémentaire.
+
+- correction du menu latéral en mode paysage : la liste du menu peut maintenant défiler verticalement ;
+- le bloc utilisateur / déconnexion reste accessible en bas ;
+- swipe vers la gauche pour refermer la sidebar ;
+- les gestes verticaux continuent à faire défiler le menu normalement ;
+- le bouton hamburger `☰` reste toujours disponible pour rouvrir la sidebar en portrait comme en paysage.

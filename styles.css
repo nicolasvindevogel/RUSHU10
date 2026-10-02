@@ -850,3 +850,90 @@ body{
   .day-note-player strong{font-size:.82rem}
   .day-note-row input{font-size:.75rem}
 }
+
+
+/* === v20 Sidebar smartphone : scroll paysage + swipe fermeture === */
+.sidebar{
+  overflow:hidden;
+}
+.sidebar nav{
+  overflow-y:auto;
+  overflow-x:hidden;
+  min-height:0;
+  flex:1 1 auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+}
+.side-bottom{
+  flex:0 0 auto;
+}
+@media(max-width:1000px){
+  .sidebar{
+    height:100dvh;
+    max-height:100dvh;
+    padding-bottom:calc(12px + env(safe-area-inset-bottom));
+    will-change:transform;
+    touch-action:pan-y;
+  }
+  .sidebar.swiping{
+    transition:none !important;
+  }
+  .sidebar:not(.swiping){
+    transition:transform .2s ease;
+  }
+  .sidebar nav{
+    padding-top:12px;
+    padding-bottom:12px;
+  }
+  .brand{
+    flex:0 0 auto;
+  }
+  .side-bottom{
+    padding-top:8px;
+    background:#0d1510;
+  }
+}
+
+/* Paysage : la hauteur est faible, donc le menu central doit défiler sans bloquer le bas. */
+@media(max-width:1000px) and (orientation:landscape){
+  .sidebar{
+    padding-top:calc(10px + env(safe-area-inset-top));
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));
+  }
+  .brand{
+    padding-bottom:9px;
+  }
+  .brand img{
+    width:42px;
+    height:42px;
+  }
+  .sidebar nav{
+    gap:3px;
+    padding:7px 0;
+  }
+  .nav-btn{
+    padding:8px 10px;
+    font-size:.82rem;
+  }
+  .side-bottom{
+    gap:6px;
+  }
+  .user-card{
+    padding:8px;
+    font-size:.76rem;
+  }
+  .side-bottom .btn{
+    padding:8px 10px;
+    font-size:.78rem;
+  }
+}
+
+/* Le bouton hamburger reste toujours accessible pour rouvrir le menu. */
+@media(max-width:1000px){
+  #menuBtn{
+    position:relative;
+    z-index:30;
+    flex:0 0 auto;
+  }
+}
