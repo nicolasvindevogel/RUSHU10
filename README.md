@@ -335,3 +335,15 @@ Correction des visuels de composition :
 - les textes trop longs sont automatiquement raccourcis proprement pour rester dans le visuel.
 
 Cette modification concerne coachs et parents : les deux versions de `release.json` ont été incrémentées.
+
+
+## v28 — Suppression des sondages
+Aucun SQL supplémentaire.
+
+Côté coach :
+- ajout d'un bouton **Supprimer** sur chaque sondage ;
+- confirmation obligatoire avant suppression ;
+- le sondage, ses choix et toutes les réponses enregistrées sont supprimés ;
+- action irréversible.
+
+La modification est visible uniquement côté coach : seule `roles.coach.version` a été incrémentée dans `release.json`.

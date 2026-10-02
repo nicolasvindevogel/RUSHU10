@@ -2642,6 +2642,7 @@ async function renderCoachPolls(){
   $$('[data-poll-open]').forEach(b=>b.onclick=()=>openCoachPoll(b.dataset.pollOpen,polls.find(p=>p.id===b.dataset.pollOpen)));
   $$('[data-poll-edit]').forEach(b=>b.onclick=()=>pollModal(polls.find(p=>p.id===b.dataset.pollEdit)));
   $$('[data-poll-close]').forEach(b=>b.onclick=()=>closePoll(b.dataset.pollClose));
+  $$('[data-poll-delete]').forEach(b=>b.onclick=()=>deletePoll(b.dataset.pollDelete,polls.find(p=>p.id===b.dataset.pollDelete)));
 }
 
 function coachPollCard(p){
@@ -2664,6 +2665,7 @@ function coachPollCard(p){
       <button class="btn secondary small" data-poll-open="${p.id}">Résultats</button>
       <button class="btn ghost small" data-poll-edit="${p.id}">Modifier</button>
       ${open?`<button class="btn danger small" data-poll-close="${p.id}">Clôturer</button>`:''}
+      <button class="btn danger small" data-poll-delete="${p.id}">Supprimer</button>
     </div>
   </div>`;
 }
@@ -2745,6 +2747,25 @@ function pollModal(p=null){
 
     setBusy(btn,false);closeModal();toast('Sondage enregistré');await renderCoachPolls();
   };
+}
+
+async function deletePoll(id,poll=null){
+  const title=poll?.title||'ce sondage';
+  if(!confirm(`Supprimer définitivement "${title}" ?\n\nLes réponses déjà enregistrées seront également supprimées. Cette action est irréversible.`))return;
+
+  // Suppression explicite des réponses et choix pour rester compatible
+  // même si les relations de la base ne sont pas toutes en ON DELETE CASCADE.
+  const {error:respErr}=await sb.from('poll_responses').delete().eq('poll_id',id);
+  if(respErr)return toast(`Suppression impossible : ${respErr.message}`,false);
+
+  const {error:optErr}=await sb.from('poll_options').delete().eq('poll_id',id);
+  if(optErr)return toast(`Suppression impossible : ${optErr.message}`,false);
+
+  const {error}=await sb.from('polls').delete().eq('id',id).eq('team_id',state.team.id);
+  if(error)return toast(`Suppression impossible : ${error.message}`,false);
+
+  toast('Sondage supprimé');
+  await renderCoachPolls();
 }
 
 async function closePoll(id){
