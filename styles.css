@@ -950,3 +950,36 @@ body{
     width:100%;
   }
 }
+
+
+/* === v23 Prochain match mis en avant === */
+.match-section{margin-bottom:22px}
+.match-section-title{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin:8px 0 10px;
+}
+.match-section-title small{
+  display:block;
+  color:#6ee995;
+  font-size:.67rem;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.match-section-title h3{margin:2px 0 0}
+.next-match-highlight{
+  border-color:rgba(28,173,82,.55)!important;
+  background:linear-gradient(135deg,rgba(28,173,82,.12),rgba(255,255,255,.025));
+  box-shadow:0 0 0 1px rgba(28,173,82,.08),0 10px 28px rgba(0,0,0,.18);
+}
+.next-match-highlight .match-date{
+  background:#1cad52;
+  color:#fff;
+}
+@media(max-width:760px){
+  .match-section{margin-bottom:18px}
+  .match-section-title{align-items:center}
+  .next-match-highlight{border-radius:16px}
+}

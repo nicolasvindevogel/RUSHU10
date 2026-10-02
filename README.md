@@ -269,3 +269,13 @@ Aucun nouveau SQL.
 - si la composition existe, l'image de composition s'affiche dans une fenêtre ;
 - si la composition n'a pas encore été faite, le parent voit le message **Composition pas encore établie** ;
 - possibilité de télécharger l'image affichée.
+
+
+## v23 — Prochain match en premier
+Aucun SQL supplémentaire.
+
+Dans le menu **Matchs**, côté coach et côté parent :
+- le match le plus proche à partir d'aujourd'hui est affiché tout en haut dans une section **Prochain match** ;
+- les autres rencontres futures apparaissent ensuite dans **Matchs à venir** ;
+- l'ordre est chronologique à partir du jour actuel ;
+- le prochain match est visuellement mis en évidence.

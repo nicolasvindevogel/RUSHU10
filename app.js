@@ -1568,33 +1568,66 @@ async function renderCoachCheckin(){
   };
 }
 
+
+function matchCardHTML(e,{parent=false,highlight=false}={}){
+  const d=new Date(e.event_date+'T12:00:00');
+  return `<div class="match-card ${parent?'parent-match-card':''} ${highlight?'next-match-highlight':''}">
+    <div class="match-date"><span>${d.getDate()}</span><small>${new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(d)}</small></div>
+    <div class="match-main">
+      <div class="event-title">
+        <h3>Herseaux ${e.opponent?`· ${esc(e.opponent)}`:''}</h3>
+        <span class="match-kind ${e.match_kind==='friendly'?'friendly':''}">${e.match_kind==='friendly'?'Amical':'Championnat'}</span>
+      </div>
+      <div class="event-meta">
+        <span>📅 ${fmtFullDate(e.event_date)}</span>
+        <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
+        ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
+        ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
+      </div>
+      ${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}
+    </div>
+    <div class="match-actions">
+      ${parent
+        ? `<button class="btn primary small" data-parent-lineup="${e.id}">Composition</button>`
+        : `<button class="btn ghost small" data-match-lineup="${e.id}">Composition</button>
+           <button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>`}
+    </div>
+  </div>`;
+}
+
 async function renderMatches(){
   await loadCore();
-  const matches=state.events.filter(e=>e.type==='match').sort((a,b)=>a.event_date.localeCompare(b.event_date));
+  const today=todayISO();
+  const upcoming=state.events
+    .filter(e=>e.type==='match' && e.event_date>=today)
+    .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  const next=upcoming[0]||null;
+  const rest=upcoming.slice(1);
+
   $('#content').innerHTML=`
     <div class="section-head">
       <div><h3>Matchs U10</h3><span class="muted">Championnat et matchs amicaux</span></div>
       <button class="btn primary" id="addMatch">+ Ajouter un match</button>
     </div>
-    <div class="match-list">
-      ${matches.length?matches.map(e=>`
-        <div class="match-card">
-          <div class="match-date"><span>${new Date(e.event_date+'T12:00:00').getDate()}</span><small>${new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(new Date(e.event_date+'T12:00:00'))}</small></div>
-          <div class="match-main">
-            <div class="event-title"><h3>Herseaux ${e.opponent?`- ${esc(e.opponent)}`:''}</h3><span class="match-kind ${e.match_kind==='friendly'?'friendly':''}">${e.match_kind==='friendly'?'Amical':'Championnat'}</span></div>
-            <div class="event-meta">
-              <span>📅 ${fmtFullDate(e.event_date)}</span>
-              <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
-              ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
-              ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
-            </div>
-          </div>
-          <div class="match-actions">
-            <button class="btn ghost small" data-match-lineup="${e.id}">Composition</button>
-            <button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>
-          </div>
-        </div>`).join(''):'<div class="empty panel">Aucun match.</div>'}
+
+    <div class="match-section">
+      <div class="match-section-title">
+        <div><small>À VENIR</small><h3>Prochain match</h3></div>
+      </div>
+      ${next?matchCardHTML(next,{highlight:true}):'<div class="empty panel">Aucun prochain match planifié.</div>'}
+    </div>
+
+    <div class="match-section">
+      <div class="match-section-title">
+        <div><small>CALENDRIER</small><h3>Matchs à venir</h3></div>
+        <span class="muted">${rest.length} match(s)</span>
+      </div>
+      <div class="match-list">
+        ${rest.length?rest.map(e=>matchCardHTML(e)).join(''):'<div class="empty panel">Aucun autre match planifié.</div>'}
+      </div>
     </div>`;
+
   $('#addMatch').onclick=()=>eventModal({type:'match',title:'Match',event_date:todayISO(),match_kind:'championship'});
   bindEventButtons();
 }
@@ -1728,38 +1761,34 @@ async function generateMatchImage(match){
 
 async function renderParentMatches(){
   await loadCore();
-  const matches=state.events
-    .filter(e=>e.type==='match')
+  const today=todayISO();
+  const upcoming=state.events
+    .filter(e=>e.type==='match' && e.event_date>=today)
     .sort((a,b)=>a.event_date.localeCompare(b.event_date)||(a.start_time||'').localeCompare(b.start_time||''));
+
+  const next=upcoming[0]||null;
+  const rest=upcoming.slice(1);
 
   $('#content').innerHTML=`
     <div class="section-head">
       <div><h3>Matchs U10</h3><span class="muted">Calendrier des matchs et compositions</span></div>
     </div>
-    <div class="match-list">
-      ${matches.length?matches.map(e=>`
-        <div class="match-card parent-match-card">
-          <div class="match-date">
-            <span>${new Date(e.event_date+'T12:00:00').getDate()}</span>
-            <small>${new Intl.DateTimeFormat('fr-BE',{month:'short'}).format(new Date(e.event_date+'T12:00:00'))}</small>
-          </div>
-          <div class="match-main">
-            <div class="event-title">
-              <h3>Herseaux ${e.opponent?`· ${esc(e.opponent)}`:''}</h3>
-              <span class="pill ${e.match_kind==='friendly'?'orange':'green'}">${e.match_kind==='friendly'?'Amical':'Championnat'}</span>
-            </div>
-            <div class="event-meta">
-              <span>📅 ${fmtFullDate(e.event_date)}</span>
-              <span>🕒 ${timeShort(e.start_time)||'Heure à préciser'}</span>
-              ${e.meeting_time?`<span>👥 RDV ${timeShort(e.meeting_time)}</span>`:''}
-              ${e.location?`<span>📍 ${esc(e.location)}</span>`:''}
-            </div>
-            ${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}
-          </div>
-          <div class="match-actions">
-            <button class="btn primary small" data-parent-lineup="${e.id}">Composition</button>
-          </div>
-        </div>`).join(''):'<div class="empty panel">Aucun match pour le moment.</div>'}
+
+    <div class="match-section">
+      <div class="match-section-title">
+        <div><small>À VENIR</small><h3>Prochain match</h3></div>
+      </div>
+      ${next?matchCardHTML(next,{parent:true,highlight:true}):'<div class="empty panel">Aucun prochain match planifié.</div>'}
+    </div>
+
+    <div class="match-section">
+      <div class="match-section-title">
+        <div><small>CALENDRIER</small><h3>Matchs à venir</h3></div>
+        <span class="muted">${rest.length} match(s)</span>
+      </div>
+      <div class="match-list">
+        ${rest.length?rest.map(e=>matchCardHTML(e,{parent:true})).join(''):'<div class="empty panel">Aucun autre match planifié.</div>'}
+      </div>
     </div>`;
 
   $$('[data-parent-lineup]').forEach(b=>b.onclick=()=>openParentMatchComposition(
