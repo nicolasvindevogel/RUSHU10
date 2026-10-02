@@ -323,3 +323,15 @@ Pour une modification uniquement visible par les parents, augmenter uniquement l
 Pour une modification commune, augmenter les deux.
 
 Seul le profil concerné voit alors le bandeau **Nouvelle version disponible** avec **Plus tard** et **Mettre à jour**.
+
+
+## v27 — Adresse sur les images de composition
+Aucun SQL supplémentaire.
+
+Correction des visuels de composition :
+- le **Lieu** et l'**Adresse** sont maintenant deux informations distinctes ;
+- auparavant, si le lieu était rempli, l'adresse était ignorée (`location || address`) ;
+- correction appliquée à l'image générée côté coach et à l'image affichée côté parent ;
+- les textes trop longs sont automatiquement raccourcis proprement pour rester dans le visuel.
+
+Cette modification concerne coachs et parents : les deux versions de `release.json` ont été incrémentées.

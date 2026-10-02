@@ -1699,6 +1699,13 @@ function roundRect(ctx,x,y,w,h,r){
   ctx.beginPath();ctx.moveTo(x+rr,y);ctx.arcTo(x+w,y,x+w,y+h,rr);ctx.arcTo(x+w,y+h,x,y+h,rr);ctx.arcTo(x,y+h,x,y,rr);ctx.arcTo(x,y,x+w,y,rr);ctx.closePath();
 }
 
+function fitCanvasText(ctx,text,maxWidth){
+  let value=String(text||'');
+  if(ctx.measureText(value).width<=maxWidth)return value;
+  while(value.length>1 && ctx.measureText(value+'…').width>maxWidth)value=value.slice(0,-1);
+  return value+'…';
+}
+
 async function loadCanvasImage(src){
   return await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src});
 }
@@ -1733,16 +1740,18 @@ async function generateMatchImage(match){
   ctx.fillText(opp.length>22?opp.slice(0,22)+'…':opp,60,430);
 
   const infoY=500;
-  roundRect(ctx,60,infoY,960,160,28);ctx.fillStyle='rgba(255,255,255,.08)';ctx.fill();
+  roundRect(ctx,60,infoY,960,205,28);ctx.fillStyle='rgba(255,255,255,.08)';ctx.fill();
   ctx.fillStyle='#fff';ctx.font='600 27px system-ui, sans-serif';
   ctx.fillText(`📅 ${fmtLong(match.event_date)}`,90,550);
   ctx.fillText(`🕒 Match : ${timeShort(match.start_time)||'à préciser'}`,90,600);
   ctx.fillText(`👥 Rendez-vous : ${timeShort(match.meeting_time)||'à préciser'}`,540,600);
-  ctx.fillText(`📍 ${match.location||match.address||'Lieu à préciser'}`,90,645);
+  ctx.fillText(`📍 Lieu : ${fitCanvasText(ctx,match.location||'À préciser',760)}`,90,645);
+  ctx.fillStyle='rgba(255,255,255,.82)';ctx.font='500 25px system-ui, sans-serif';
+  ctx.fillText(`🏠 Adresse : ${fitCanvasText(ctx,match.address||'À préciser',780)}`,90,682);
 
-  ctx.fillStyle='#43d56f';ctx.font='800 36px system-ui, sans-serif';ctx.fillText('JOUEURS CONVOQUÉS',60,735);
+  ctx.fillStyle='#43d56f';ctx.font='800 36px system-ui, sans-serif';ctx.fillText('JOUEURS CONVOQUÉS',60,765);
   ctx.fillStyle='#fff';ctx.font='650 31px system-ui, sans-serif';
-  const cols=2, colW=470, startY=790, rowH=58;
+  const cols=2, colW=470, startY=820, rowH=58;
   players.forEach((p,i)=>{
     const col=i%cols,row=Math.floor(i/cols);
     const x=60+col*colW,y=startY+row*rowH;
@@ -1967,7 +1976,10 @@ async function renderParentMatchImage(match, selectedIds){
   ctx.fillText(`Date : ${fmtFullDate(match.event_date)}`,90,380);
   ctx.fillText(`Heure : ${timeShort(match.start_time)||'À préciser'}`,90,420);
   if(match.meeting_time) ctx.fillText(`Rendez-vous : ${timeShort(match.meeting_time)}`,90,460);
-  if(match.location) ctx.fillText(`Lieu : ${match.location}`,90,500);
+  ctx.fillText(`Lieu : ${fitCanvasText(ctx,match.location||'À préciser',820)}`,90,500);
+  ctx.fillStyle='rgba(255,255,255,.78)';
+  ctx.font='500 25px system-ui, sans-serif';
+  ctx.fillText(`Adresse : ${fitCanvasText(ctx,match.address||'À préciser',820)}`,90,540);
 
   ctx.fillStyle='#ffffff';
   ctx.font='800 38px system-ui, sans-serif';

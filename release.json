@@ -1,14 +1,14 @@
 {
-  "build": "v26",
-  "published_at": "2026-10-02T08:45:00+02:00",
+  "build": "v27",
+  "published_at": "2026-10-02T09:55:00+02:00",
   "roles": {
     "coach": {
-      "version": 1,
-      "message": "Améliorations disponibles pour l'espace coach."
+      "version": 2,
+      "message": "Les images de composition affichent maintenant le lieu et l'adresse complète du match."
     },
     "parent": {
-      "version": 1,
-      "message": "Améliorations disponibles pour l'espace parent."
+      "version": 2,
+      "message": "Les images de composition affichent maintenant le lieu et l'adresse complète du match."
     }
   }
 }
