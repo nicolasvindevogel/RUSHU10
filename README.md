@@ -431,3 +431,13 @@ Elle est maintenant entièrement dynamique :
 - l'adversaire et l'heure sont affichés dans l'en-tête pour différencier facilement les matchs.
 
 La vue parent était déjà basée sur tous les événements de la semaine ; la v33 harmonise maintenant également la vue de suivi des coachs.
+
+
+## v34 — Tous les événements dans les prévisions parents
+Aucun SQL supplémentaire.
+
+Correction :
+- la vue coach **Prévisions parents** ne se limite plus aux entraînements, matchs et tournois ;
+- les événements de type **Événement du club** apparaissent aussi automatiquement ;
+- cela couvre par exemple une séance **Photos d'équipe**, une réunion, une activité spéciale, etc. ;
+- la vue coach correspond désormais à ce que les parents peuvent réellement remplir dans leur espace.

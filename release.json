@@ -1,14 +1,14 @@
 {
-  "build": "v33",
-  "published_at": "2026-10-04T21:05:00+02:00",
+  "build": "v34",
+  "published_at": "2026-10-04T21:10:00+02:00",
   "roles": {
     "coach": {
-      "version": 8,
-      "message": "Les présences s'adaptent maintenant automatiquement à tous les matchs et entraînements de la semaine."
+      "version": 9,
+      "message": "Les prévisions parents affichent maintenant tous les événements de la semaine, y compris les événements du club."
     },
     "parent": {
-      "version": 6,
-      "message": "Les présences prennent maintenant automatiquement en compte plusieurs matchs dans la même semaine."
+      "version": 7,
+      "message": "Harmonisation des présences avec tous les événements de la semaine."
     }
   }
 }

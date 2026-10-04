@@ -1320,8 +1320,7 @@ async function renderParentForecast(){
   const weekEvents=state.events
     .filter(e=>
       e.event_date>=start &&
-      e.event_date<=end &&
-      ['training','match','tournament'].includes(e.type)
+      e.event_date<=end
     )
     .sort((a,b)=>
       a.event_date.localeCompare(b.event_date) ||
@@ -1341,7 +1340,12 @@ async function renderParentForecast(){
 
   const eventLabel=e=>{
     const day=new Intl.DateTimeFormat('fr-BE',{weekday:'short'}).format(new Date(e.event_date+'T12:00:00'));
-    const type=e.type==='match'?'Match':e.type==='tournament'?'Tournoi':'Entraînement';
+    const type=({
+      training:'Entraînement',
+      match:'Match',
+      tournament:'Tournoi',
+      other:'Événement'
+    })[e.type]||'Événement';
     const opponent=e.opponent?` · ${esc(e.opponent)}`:'';
     const time=timeShort(e.start_time)?` · ${timeShort(e.start_time)}`:'';
     return `<span class="forecast-event-label"><strong>${esc(day)} ${fmtDate(e.event_date)}</strong><small>${type}${opponent}${time}</small></span>`;
@@ -1355,7 +1359,12 @@ async function renderParentForecast(){
     if(!arr.length)return '<span class="muted">—</span>';
 
     return arr.map(({event,answer})=>{
-      const shortType=event.type==='match'?'Match':event.type==='tournament'?'Tournoi':'Entraînement';
+      const shortType=({
+        training:'Entraînement',
+        match:'Match',
+        tournament:'Tournoi',
+        other:'Événement'
+      })[event.type]||'Événement';
       return `<div class="forecast-comment"><strong>${shortType} ${fmtDate(event.event_date)}</strong> : ${esc(answer.comment)}</div>`;
     }).join('');
   };
@@ -1369,7 +1378,7 @@ async function renderParentForecast(){
     <div class="section-head">
       <div>
         <h3>Réponses des parents</h3>
-        <span class="muted">Tous les entraînements et matchs de la semaine s'ajoutent automatiquement.</span>
+        <span class="muted">Tous les événements de la semaine s'ajoutent automatiquement.</span>
       </div>
     </div>
 
