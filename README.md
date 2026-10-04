@@ -369,3 +369,30 @@ La modification est visible uniquement côté coach : seule `roles.coach.version
 - possibilité d'annuler la réponse en cas d'erreur.
 
 Les photos sont stockées dans un bucket Supabase privé `lost-found`.
+
+
+## v30 — Nouveaux joueurs dans la connexion + modification du prénom
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_JOUEURS_DYNAMIQUES_V30.sql`
+
+Corrections :
+- la liste « Qui êtes-vous ? » n'est plus écrite en dur dans `index.html` ;
+- elle est maintenant chargée depuis Supabase à chaque ouverture ;
+- tous les joueurs déjà ajoutés manuellement (dont Mael) sont automatiquement rattrapés par le SQL ;
+- tout futur joueur ajouté dans l'espace coach reçoit automatiquement son identité parent ;
+- la clé de connexion d'un nouveau joueur est basée sur son UUID et reste stable même si son prénom est corrigé ;
+- ajout d'un bouton **Modifier** dans l'effectif pour corriger prénom, nom et numéro ;
+- une correction de prénom met automatiquement à jour le nom visible sur l'écran de connexion.
+
+Les versions coach et parent sont incrémentées.
+
+
+## v31 — Correction ajout de match
+Pas de SQL supplémentaire par rapport à la v30.
+
+Correction de l'enregistrement des événements/matchs :
+- normalisation explicite des heures au format PostgreSQL `HH:MM:SS` ;
+- validation de la date avant enregistrement ;
+- `created_by` n'est envoyé que si l'identifiant de session est un UUID valide ;
+- message d'erreur Supabase plus complet en cas de problème restant.
+
+Cette version contient aussi toutes les corrections de la v30 (joueurs dynamiques + modification du prénom).

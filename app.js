@@ -247,10 +247,44 @@ async function ensureSession(){
   throw new Error("Impossible de créer la session sur ce téléphone.");
 }
 
+
+async function loadLoginIdentityOptions(){
+  const sel=$('#identitySelect');
+  if(!sel || !sb)return;
+
+  try{
+    await ensureRpcSession();
+    const {data,error}=await sb.rpc('list_login_identities');
+    if(error)throw error;
+
+    const rows=Array.isArray(data)?data:[];
+    const coaches=rows.filter(x=>x.identity_type==='coach');
+    const players=rows.filter(x=>x.identity_type==='player');
+
+    sel.innerHTML=`
+      <option value="">Choisir dans la liste…</option>
+      <optgroup label="Coachs">
+        ${coaches.map(x=>`<option value="${esc(x.identity_key)}">${esc(x.display_name)}</option>`).join('')}
+      </optgroup>
+      <optgroup label="Joueurs / parents">
+        ${players.length
+          ? players.map(x=>`<option value="${esc(x.identity_key)}">${esc(x.display_name)}</option>`).join('')
+          : '<option value="" disabled>Aucun joueur disponible</option>'}
+      </optgroup>`;
+
+  }catch(err){
+    console.error('Chargement des profils de connexion',err);
+    // Les coachs présents dans le HTML restent disponibles en secours.
+    const playerGroup=sel.querySelector('optgroup[label="Joueurs / parents"]');
+    if(playerGroup)playerGroup.innerHTML='<option value="" disabled>Impossible de charger la liste des joueurs</option>';
+  }
+}
+
 async function init(){
   if(!configured){ $('#setupWarning').classList.remove('hidden'); return; }
   try{
     const user = await ensureSession();
+    await loadLoginIdentityOptions();
     await loadUser(user);
   }catch(err){
     console.error(err);
@@ -1131,6 +1165,20 @@ function agendaCalendarHTML(events){
   </div>`;
 }
 
+
+function normalizeEventTime(value){
+  const v=String(value||'').trim();
+  if(!v)return null;
+  // HTML time inputs normally return HH:MM. We normalize explicitly for PostgreSQL.
+  if(/^\d{2}:\d{2}$/.test(v))return `${v}:00`;
+  if(/^\d{2}:\d{2}:\d{2}$/.test(v))return v;
+  return null;
+}
+
+function isUuid(value){
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value||''));
+}
+
 function eventModal(e=null){
   openModal(`<h2>${e?'Modifier':'Ajouter'} un événement</h2>
   <form id="eventForm" class="form-grid">
@@ -1170,25 +1218,49 @@ function eventModal(e=null){
   $('#eventForm').onsubmit=async ev=>{
     ev.preventDefault();
     const btn=ev.submitter; setBusy(btn,true);
+    const type=$('#evType').value;
+    const eventDate=$('#evDate').value;
+    const title=$('#evTitle').value.trim();
+
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)){
+      setBusy(btn,false);
+      return toast('La date du match est invalide.',false);
+    }
+    if(!title){
+      setBusy(btn,false);
+      return toast('Le titre est obligatoire.',false);
+    }
+
     const payload={
       team_id:state.team.id,
-      type:$('#evType').value,
-      title:$('#evTitle').value.trim(),
-      event_date:$('#evDate').value,
-      start_time:$('#evStart').value||null,
-      end_time:$('#evEnd').value||null,
-      meeting_time:$('#evMeet').value||null,
+      type,
+      title,
+      event_date:eventDate,
+      start_time:normalizeEventTime($('#evStart').value),
+      end_time:normalizeEventTime($('#evEnd').value),
+      meeting_time:normalizeEventTime($('#evMeet').value),
       location:$('#evLocation').value.trim()||null,
       address:$('#evAddress').value.trim()||null,
       opponent:$('#evOpponent').value.trim()||null,
       notes:$('#evNotes').value.trim()||null,
-      match_kind:$('#evType').value==='match'?$('#evMatchKind').value:null,
-      created_by:state.user.id
+      match_kind:type==='match'?($('#evMatchKind').value||'championship'):null
     };
-    let q=e?sb.from('events').update(payload).eq('id',e.id):sb.from('events').insert(payload);
+
+    // created_by est facultatif en base. On ne l'envoie que si la session contient
+    // bien un UUID valide, afin d'éviter toute erreur "invalid input syntax for type uuid".
+    if(isUuid(state.user?.id)) payload.created_by=state.user.id;
+
+    let q=e
+      ? sb.from('events').update(payload).eq('id',e.id)
+      : sb.from('events').insert(payload);
+
     const {error}=await q;
     setBusy(btn,false);
-    if(error)return toast(error.message,false);
+    if(error){
+      console.error('Erreur enregistrement événement',error,payload);
+      const detail=[error.message,error.details,error.hint].filter(Boolean).join(' · ');
+      return toast(detail||"Impossible d'enregistrer le match.",false);
+    }
     closeModal(); toast('Événement enregistré');
     await loadCore(); await go(state.page);
   };
@@ -2278,8 +2350,98 @@ async function deleteTrainingDocument(id,skipRender=false){
   return true;
 }
 
-async function renderPlayers(){ if(!isCoach()){go('dashboard');return;} await loadCore(); const {data:links}=await sb.from('player_guardians').select('player_id,user_id,profiles(full_name)'); const counts={};(links||[]).forEach(l=>counts[l.player_id]=(counts[l.player_id]||0)+1); $('#content').innerHTML=`<div class="section-head"><h3>Effectif U10</h3><button class="btn primary small" id="addPlayer">+ Joueur</button></div><div class="table-wrap"><table><thead><tr><th>Joueur</th><th>N°</th><th>Parents liés</th><th>Code parent</th><th>Action</th></tr></thead><tbody>${state.players.map(p=>`<tr><td><strong>${esc(p.first_name)} ${esc(p.last_name||'')}</strong></td><td>${p.number||'—'}</td><td>${counts[p.id]||0}</td><td><button class="btn ghost small" data-pin="${p.id}">Générer / remplacer</button></td><td><button class="btn danger small" data-disable="${p.id}">Désactiver</button></td></tr>`).join('')}</tbody></table></div>`; $('#addPlayer').onclick=()=>playerModal(); $$('[data-pin]').forEach(b=>b.onclick=()=>generatePin(b.dataset.pin)); $$('[data-disable]').forEach(b=>b.onclick=async()=>{if(!confirm('Désactiver ce joueur ?'))return;const{error}=await sb.from('players').update({active:false}).eq('id',b.dataset.disable);if(error)return toast(error.message,false);await loadCore();renderPlayers()}); }
-function playerModal(){openModal(`<h2>Ajouter un joueur</h2><form id="playerForm" class="stack"><label>Prénom<input id="plFirst" required /></label><label>Nom (optionnel)<input id="plLast" /></label><label>Numéro (optionnel)<input id="plNumber" type="number" min="0" max="99" /></label><button class="btn primary">Ajouter</button></form>`);$('#playerForm').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;setBusy(btn,true);const{error}=await sb.from('players').insert({team_id:state.team.id,first_name:$('#plFirst').value.trim(),last_name:$('#plLast').value.trim()||null,number:$('#plNumber').value?Number($('#plNumber').value):null});setBusy(btn,false);if(error)return toast(error.message,false);closeModal();toast('Joueur ajouté');await loadCore();renderPlayers()}}
+async function renderPlayers(){
+  if(!isCoach()){go('dashboard');return;}
+  await loadCore();
+
+  const {data:links}=await sb.from('player_guardians').select('player_id,user_id,profiles(full_name)');
+  const counts={};
+  (links||[]).forEach(l=>counts[l.player_id]=(counts[l.player_id]||0)+1);
+
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <h3>Effectif U10</h3>
+      <button class="btn primary small" id="addPlayer">+ Joueur</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Joueur</th><th>N°</th><th>Parents liés</th><th>Code parent</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${state.players.map(p=>`<tr>
+            <td><strong>${esc(p.first_name)} ${esc(p.last_name||'')}</strong></td>
+            <td>${p.number||'—'}</td>
+            <td>${counts[p.id]||0}</td>
+            <td><button class="btn ghost small" data-pin="${p.id}">Générer / remplacer</button></td>
+            <td>
+              <div class="event-actions">
+                <button class="btn secondary small" data-edit-player="${p.id}">Modifier</button>
+                <button class="btn danger small" data-disable="${p.id}">Désactiver</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  $('#addPlayer').onclick=()=>playerModal();
+  $$('[data-edit-player]').forEach(b=>b.onclick=()=>playerModal(state.players.find(p=>p.id===b.dataset.editPlayer)));
+  $$('[data-pin]').forEach(b=>b.onclick=()=>generatePin(b.dataset.pin));
+  $$('[data-disable]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Désactiver ce joueur ?'))return;
+    const {error}=await sb.from('players').update({active:false}).eq('id',b.dataset.disable);
+    if(error)return toast(error.message,false);
+    await loadCore();
+    await renderPlayers();
+  });
+}
+
+function playerModal(player=null){
+  const editing=!!player;
+  openModal(`
+    <h2>${editing?'Modifier le joueur':'Ajouter un joueur'}</h2>
+    <form id="playerForm" class="stack">
+      <label>Prénom
+        <input id="plFirst" required value="${esc(player?.first_name||'')}" />
+      </label>
+      <label>Nom (optionnel)
+        <input id="plLast" value="${esc(player?.last_name||'')}" />
+      </label>
+      <label>Numéro (optionnel)
+        <input id="plNumber" type="number" min="0" max="99" value="${player?.number??''}" />
+      </label>
+      ${editing?'<div class="notice">Si vous corrigez le prénom, le nom affiché dans la liste de connexion parent sera également mis à jour automatiquement.</div>':''}
+      <button class="btn primary">${editing?'Enregistrer les modifications':'Ajouter'}</button>
+    </form>`);
+
+  $('#playerForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter;
+    const payload={
+      first_name:$('#plFirst').value.trim(),
+      last_name:$('#plLast').value.trim()||null,
+      number:$('#plNumber').value?Number($('#plNumber').value):null
+    };
+    if(!payload.first_name)return toast('Le prénom est obligatoire.',false);
+
+    setBusy(btn,true);
+    let error;
+    if(editing){
+      ({error}=await sb.from('players').update(payload).eq('id',player.id).eq('team_id',state.team.id));
+    }else{
+      ({error}=await sb.from('players').insert({team_id:state.team.id,...payload}));
+    }
+    setBusy(btn,false);
+
+    if(error)return toast(error.message,false);
+    closeModal();
+    toast(editing?'Joueur modifié':'Joueur ajouté');
+    await loadCore();
+    await renderPlayers();
+    // La liste de connexion est aussi rafraîchie immédiatement sur ce téléphone.
+    await loadLoginIdentityOptions();
+  };
+}
+
 async function generatePin(pid){ const p=state.players.find(x=>x.id===pid); const {data,error}=await sb.rpc('generate_player_pin',{p_player_id:pid}); if(error)return toast(error.message,false); openModal(`<h2>Code parent · ${esc(p?.first_name||'Joueur')}</h2><p>Communique ce code au parent. Il lui permettra de lier son compte à l'enfant.</p><div class="link-code">${esc(data)}</div><p class="muted">Un nouveau code remplace immédiatement l'ancien.</p><button class="btn primary full" id="copyPin">Copier le code</button>`); $('#copyPin').onclick=async()=>{await navigator.clipboard.writeText(String(data));toast('Code copié')}; }
 
 function evalPoints(v){return v==='A'?3:v==='B'?2:v==='C'?1:0}
