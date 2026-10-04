@@ -1,14 +1,14 @@
 {
-  "build": "v32",
-  "published_at": "2026-10-04T20:50:00+02:00",
+  "build": "v33",
+  "published_at": "2026-10-04T21:05:00+02:00",
   "roles": {
     "coach": {
-      "version": 7,
-      "message": "Correction du bouton Ajouter un match : plus d'erreur UUID « undefined »."
+      "version": 8,
+      "message": "Les présences s'adaptent maintenant automatiquement à tous les matchs et entraînements de la semaine."
     },
     "parent": {
-      "version": 5,
-      "message": "Correction technique liée à l'enregistrement des nouveaux matchs."
+      "version": 6,
+      "message": "Les présences prennent maintenant automatiquement en compte plusieurs matchs dans la même semaine."
     }
   }
 }

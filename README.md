@@ -412,3 +412,22 @@ Correction :
 - le bouton Supprimer n'apparaît que pour un vrai événement existant.
 
 La v32 contient aussi toutes les modifications des v30 et v31.
+
+
+## v33 — Présences dynamiques avec plusieurs matchs
+Aucun SQL supplémentaire.
+
+Avant, la vue coach **Prévisions parents** était limitée à :
+- l'entraînement du mardi ;
+- l'entraînement du jeudi ;
+- un seul match le samedi.
+
+Elle est maintenant entièrement dynamique :
+- tous les entraînements de la semaine sont repris ;
+- tous les matchs de la semaine sont repris ;
+- deux matchs le même week-end ou le même jour apparaissent séparément ;
+- chaque match possède sa propre réponse Présent / Absent ;
+- les remarques sont reliées au bon événement ;
+- l'adversaire et l'heure sont affichés dans l'en-tête pour différencier facilement les matchs.
+
+La vue parent était déjà basée sur tous les événements de la semaine ; la v33 harmonise maintenant également la vue de suivi des coachs.

@@ -1310,61 +1310,103 @@ async function renderAttendance(){
 async function renderParentForecast(){
   let monday=state.attendanceWeek?mondayOf(state.attendanceWeek):mondayOf();
   state.attendanceWeek=isoLocal(monday);
-  const tue=isoLocal(addDays(monday,1)), thu=isoLocal(addDays(monday,3)), sat=isoLocal(addDays(monday,5));
-  const wanted=[tue,thu,sat];
-  const weekEvents=state.events.filter(e=>wanted.includes(e.event_date));
-  const tueEvent=weekEvents.find(e=>e.event_date===tue&&e.type==='training');
-  const thuEvent=weekEvents.find(e=>e.event_date===thu&&e.type==='training');
-  const satEvent=weekEvents.find(e=>e.event_date===sat&&e.type==='match');
-  const ids=[tueEvent?.id,thuEvent?.id,satEvent?.id].filter(Boolean);
+  const sunday=addDays(monday,6);
+  const start=isoLocal(monday);
+  const end=isoLocal(sunday);
+
+  // Tous les entraînements, matchs et tournois de la semaine sont pris en compte.
+  // Ainsi, s'il y a 2 matchs dans la même semaine (ou même le même jour),
+  // chacun possède sa propre colonne de présence.
+  const weekEvents=state.events
+    .filter(e=>
+      e.event_date>=start &&
+      e.event_date<=end &&
+      ['training','match','tournament'].includes(e.type)
+    )
+    .sort((a,b)=>
+      a.event_date.localeCompare(b.event_date) ||
+      (a.start_time||'').localeCompare(b.start_time||'') ||
+      (a.title||'').localeCompare(b.title||'','fr')
+    );
+
+  const ids=weekEvents.map(e=>e.id).filter(Boolean);
   let avail=[];
   if(ids.length){
     const {data,error}=await sb.from('availability').select('*').in('event_id',ids);
     if(error) toast(error.message,false);
     avail=data||[];
   }
+
   const map=new Map(avail.map(x=>[`${x.event_id}:${x.player_id}`,x]));
-  const commentsFor=(pid)=>{
-    const arr=[
-      tueEvent&&map.get(`${tueEvent.id}:${pid}`),
-      thuEvent&&map.get(`${thuEvent.id}:${pid}`),
-      satEvent&&map.get(`${satEvent.id}:${pid}`)
-    ].filter(x=>x?.comment);
-    return arr.map((x,i)=>esc(x.comment)).join('<br>')||'<span class="muted">—</span>';
+
+  const eventLabel=e=>{
+    const day=new Intl.DateTimeFormat('fr-BE',{weekday:'short'}).format(new Date(e.event_date+'T12:00:00'));
+    const type=e.type==='match'?'Match':e.type==='tournament'?'Tournoi':'Entraînement';
+    const opponent=e.opponent?` · ${esc(e.opponent)}`:'';
+    const time=timeShort(e.start_time)?` · ${timeShort(e.start_time)}`:'';
+    return `<span class="forecast-event-label"><strong>${esc(day)} ${fmtDate(e.event_date)}</strong><small>${type}${opponent}${time}</small></span>`;
   };
-  const label=(ev,date,base)=>ev?`${base}<small>${fmtDate(date)}</small>`:`${base}<small>${fmtDate(date)} · pas d’événement</small>`;
+
+  const commentsFor=(pid)=>{
+    const arr=weekEvents
+      .map(e=>({event:e,answer:map.get(`${e.id}:${pid}`)}))
+      .filter(x=>x.answer?.comment);
+
+    if(!arr.length)return '<span class="muted">—</span>';
+
+    return arr.map(({event,answer})=>{
+      const shortType=event.type==='match'?'Match':event.type==='tournament'?'Tournoi':'Entraînement';
+      return `<div class="forecast-comment"><strong>${shortType} ${fmtDate(event.event_date)}</strong> : ${esc(answer.comment)}</div>`;
+    }).join('');
+  };
+
   $('#attendanceBody').innerHTML=`
     <div class="panel week-toolbar">
       <button class="btn ghost small" id="prevWeek">← Semaine</button>
-      <strong>Semaine du ${fmtLong(isoLocal(monday))}</strong>
+      <strong>Semaine du ${fmtLong(start)}</strong>
       <button class="btn ghost small" id="nextWeek">Semaine →</button>
     </div>
     <div class="section-head">
-      <div><h3>Réponses des parents</h3><span class="muted">Vue de préparation des entraînements et du match</span></div>
+      <div>
+        <h3>Réponses des parents</h3>
+        <span class="muted">Tous les entraînements et matchs de la semaine s'ajoutent automatiquement.</span>
+      </div>
     </div>
-    <div class="table-wrap forecast-table"><table>
-      <thead><tr>
-        <th>Joueur</th>
-        <th>${label(tueEvent,tue,'Mardi')}</th>
-        <th>${label(thuEvent,thu,'Jeudi')}</th>
-        <th>${label(satEvent,sat,'Match')}</th>
-        <th>Remarques</th>
-      </tr></thead>
-      <tbody>${state.players.map(p=>{
-        const a=tueEvent?map.get(`${tueEvent.id}:${p.id}`):null;
-        const b=thuEvent?map.get(`${thuEvent.id}:${p.id}`):null;
-        const c=satEvent?map.get(`${satEvent.id}:${p.id}`):null;
-        return `<tr><td><strong>${esc(p.first_name)}</strong></td>
-          <td>${tueEvent?availabilityCell(a):'<span class="muted">—</span>'}</td>
-          <td>${thuEvent?availabilityCell(b):'<span class="muted">—</span>'}</td>
-          <td>${satEvent?availabilityCell(c):'<span class="muted">—</span>'}</td>
-          <td class="remarks-cell">${commentsFor(p.id)}</td></tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
-  $('#prevWeek').onclick=()=>{state.attendanceWeek=isoLocal(addDays(monday,-7));renderParentForecast()};
-  $('#nextWeek').onclick=()=>{state.attendanceWeek=isoLocal(addDays(monday,7));renderParentForecast()};
-}
 
+    ${weekEvents.length?`
+      <div class="table-wrap forecast-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Joueur</th>
+              ${weekEvents.map(e=>`<th>${eventLabel(e)}</th>`).join('')}
+              <th>Remarques</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.players.map(p=>`
+              <tr>
+                <td><strong>${esc(p.first_name)}</strong></td>
+                ${weekEvents.map(e=>{
+                  const answer=map.get(`${e.id}:${p.id}`);
+                  return `<td>${availabilityCell(answer)}</td>`;
+                }).join('')}
+                <td class="remarks-cell">${commentsFor(p.id)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `:'<div class="empty panel">Aucun entraînement ou match prévu cette semaine.</div>'}`;
+
+  $('#prevWeek').onclick=()=>{
+    state.attendanceWeek=isoLocal(addDays(monday,-7));
+    renderParentForecast();
+  };
+  $('#nextWeek').onclick=()=>{
+    state.attendanceWeek=isoLocal(addDays(monday,7));
+    renderParentForecast();
+  };
+}
 
 function attendanceStatusIcon(status){
   if(status==='present') return '<span class="attendance-mark present" title="Présent">✓</span>';

@@ -1397,3 +1397,26 @@ body{
     grid-template-columns:1fr;
   }
 }
+
+
+/* === v33 Présences dynamiques multi-matchs === */
+.forecast-event-label{
+  display:grid;
+  min-width:120px;
+  gap:2px;
+}
+.forecast-event-label strong{
+  white-space:nowrap;
+}
+.forecast-event-label small{
+  font-weight:500;
+  line-height:1.25;
+  white-space:normal;
+}
+.forecast-comment{
+  margin-bottom:4px;
+  line-height:1.3;
+}
+.forecast-comment:last-child{
+  margin-bottom:0;
+}
