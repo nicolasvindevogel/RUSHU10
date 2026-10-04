@@ -396,3 +396,19 @@ Correction de l'enregistrement des événements/matchs :
 - message d'erreur Supabase plus complet en cas de problème restant.
 
 Cette version contient aussi toutes les corrections de la v30 (joueurs dynamiques + modification du prénom).
+
+
+## v32 — Correction définitive « invalid input syntax for type uuid: undefined »
+Pas de SQL supplémentaire par rapport à la v30.
+
+Cause identifiée :
+- le bouton **+ Match** ouvrait le formulaire avec un objet prérempli (type=match, titre=Match, date du jour) ;
+- le formulaire considérait cet objet comme un événement existant simplement parce qu'il était non nul ;
+- il lançait donc un `UPDATE ... WHERE id = undefined`, ce qui provoquait exactement l'erreur PostgreSQL `invalid input syntax for type uuid: "undefined"`.
+
+Correction :
+- un événement n'est considéré comme existant que si son `id` est un UUID valide ;
+- les formulaires préremplis comme **+ Match** utilisent maintenant bien un `INSERT` ;
+- le bouton Supprimer n'apparaît que pour un vrai événement existant.
+
+La v32 contient aussi toutes les modifications des v30 et v31.

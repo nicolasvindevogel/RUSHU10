@@ -1,10 +1,10 @@
 {
-  "build": "v31",
-  "published_at": "2026-10-04T20:35:00+02:00",
+  "build": "v32",
+  "published_at": "2026-10-04T20:50:00+02:00",
   "roles": {
     "coach": {
-      "version": 6,
-      "message": "Correction de l'ajout des matchs et sécurisation des champs date/heure."
+      "version": 7,
+      "message": "Correction du bouton Ajouter un match : plus d'erreur UUID « undefined »."
     },
     "parent": {
       "version": 5,

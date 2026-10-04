@@ -1180,7 +1180,8 @@ function isUuid(value){
 }
 
 function eventModal(e=null){
-  openModal(`<h2>${e?'Modifier':'Ajouter'} un événement</h2>
+  const isExistingEvent=!!(e && isUuid(e.id));
+  openModal(`<h2>${isExistingEvent?'Modifier':'Ajouter'} un événement</h2>
   <form id="eventForm" class="form-grid">
     <label>Type
       <select id="evType">
@@ -1206,7 +1207,7 @@ function eventModal(e=null){
     <label class="full">Adresse<input id="evAddress" value="${esc(e?.address||'')}" /></label>
     <label class="full">Informations<textarea id="evNotes">${esc(e?.notes||'')}</textarea></label>
     <div class="full" style="display:flex;gap:8px;justify-content:flex-end">
-      ${e?'<button type="button" id="deleteEvent" class="btn danger">Supprimer</button>':''}
+      ${isExistingEvent?'<button type="button" id="deleteEvent" class="btn danger">Supprimer</button>':''}
       <button class="btn primary">Enregistrer</button>
     </div>
   </form>`);
@@ -1250,7 +1251,7 @@ function eventModal(e=null){
     // bien un UUID valide, afin d'éviter toute erreur "invalid input syntax for type uuid".
     if(isUuid(state.user?.id)) payload.created_by=state.user.id;
 
-    let q=e
+    let q=isExistingEvent
       ? sb.from('events').update(payload).eq('id',e.id)
       : sb.from('events').insert(payload);
 
@@ -1265,6 +1266,7 @@ function eventModal(e=null){
     await loadCore(); await go(state.page);
   };
   $('#deleteEvent')?.addEventListener('click',async()=>{
+    if(!isExistingEvent)return;
     if(!confirm('Supprimer cet événement ?'))return;
     const {error}=await sb.from('events').delete().eq('id',e.id);
     if(error)return toast(error.message,false);
