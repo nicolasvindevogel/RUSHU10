@@ -1,14 +1,14 @@
 {
-  "build": "v34",
-  "published_at": "2026-10-04T21:10:00+02:00",
+  "build": "v35",
+  "published_at": "2026-10-05T18:09:00+02:00",
   "roles": {
     "coach": {
-      "version": 9,
-      "message": "Les prévisions parents affichent maintenant tous les événements de la semaine, y compris les événements du club."
+      "version": 10,
+      "message": "Nouveaux filtres Jour/Semaine/Mois pour les prévisions et objets trouvés mis en avant sur le tableau de bord."
     },
     "parent": {
-      "version": 7,
-      "message": "Harmonisation des présences avec tous les événements de la semaine."
+      "version": 8,
+      "message": "Les parents peuvent maintenant signaler un objet trouvé et les objets non réclamés sont mis en avant sur l'accueil."
     }
   }
 }

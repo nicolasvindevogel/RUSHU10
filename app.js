@@ -617,8 +617,50 @@ function parentEventCard(e){
   </div>`;
 }
 
+
+async function fetchUnclaimedLostFoundItems(limit=4){
+  const {data,error}=await sb.from('lost_found_items')
+    .select('*')
+    .eq('team_id',state.team.id)
+    .eq('status','open')
+    .is('claimed_at',null)
+    .order('created_at',{ascending:false})
+    .limit(limit);
+  if(error){
+    console.warn('Objets trouvés tableau de bord',error);
+    return [];
+  }
+  const items=data||[];
+  await Promise.all(items.map(async item=>{
+    const {data:signed}=await sb.storage.from('lost-found').createSignedUrl(item.photo_path,60*30);
+    item.photo_url=signed?.signedUrl||null;
+  }));
+  return items;
+}
+
+function lostFoundDashboardHTML(items){
+  if(!items?.length)return '';
+  return `<section class="lostfound-dashboard">
+    <div class="lostfound-dashboard-head">
+      <div>
+        <small>OBJETS TROUVÉS</small>
+        <h3>${items.length===1?'Un objet attend son propriétaire':`${items.length} objets attendent leur propriétaire`}</h3>
+        <p>Reconnaissez-vous quelque chose ?</p>
+      </div>
+      <button class="btn primary small" data-open-lostfound>Voir les objets</button>
+    </div>
+    <div class="lostfound-dashboard-photos">
+      ${items.map(item=>`
+        <button class="lostfound-dashboard-photo" type="button" data-open-lostfound>
+          ${item.photo_url?`<img src="${item.photo_url}" alt="Objet trouvé" />`:'<span>Photo indisponible</span>'}
+        </button>`).join('')}
+    </div>
+  </section>`;
+}
+
 async function renderParentHome(){
   await loadCore();
+  const unclaimedLostFound=await fetchUnclaimedLostFoundItems(4);
   const now=new Date();
   const y=now.getFullYear(),m=now.getMonth();
   const monthEvents=state.events.filter(e=>{
@@ -636,6 +678,8 @@ async function renderParentHome(){
       <button class="btn primary" id="homePresence">Remplir les présences</button>
     </div>
 
+    ${lostFoundDashboardHTML(unclaimedLostFound)}
+
     <div class="section-head"><div><h3>Prochains rendez-vous</h3><span class="muted">${new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(now)}</span></div></div>
     <div class="event-list">${upcoming.length?upcoming.map(parentEventCard).join(''):'<div class="empty panel">Aucun événement à venir.</div>'}</div>
 
@@ -652,6 +696,7 @@ async function renderParentHome(){
 
   $('#homePresence').onclick=()=>go('attendance');
   $('#homeContact').onclick=()=>go('contact');
+  $$('[data-open-lostfound]').forEach(b=>b.onclick=()=>go('lostfound'));
   $$('[data-cal-event]').forEach(b=>b.onclick=()=>{go('attendance')});
 
   const {data:activePolls}=await sb.from('polls')
@@ -1028,12 +1073,17 @@ function setupMessageRealtime(){
 }
 
 async function renderDashboard(){
-  await loadCore(); const now=todayISO(); const upcoming=state.events.filter(e=>e.event_date>=now).slice(0,6); const thisMonth=state.events.filter(e=>e.event_date.slice(0,7)===now.slice(0,7));
+  await loadCore();
+  const unclaimedLostFound=await fetchUnclaimedLostFoundItems(4);
+  const now=todayISO(); const upcoming=state.events.filter(e=>e.event_date>=now).slice(0,6); const thisMonth=state.events.filter(e=>e.event_date.slice(0,7)===now.slice(0,7));
   let linked=[]; if(!isCoach()){ const {data}=await sb.from('player_guardians').select('player_id,players(*)').eq('user_id',state.user.id); linked=data||[]; }
-  let html=`<div class="cards"><div class="stat"><div class="label">Joueurs actifs</div><div class="value">${state.players.length}</div></div><div class="stat"><div class="label">Événements ce mois</div><div class="value">${thisMonth.length}</div></div><div class="stat"><div class="label">Prochains matchs</div><div class="value">${upcoming.filter(e=>e.type==='match').length}</div></div><div class="stat"><div class="label">Profil</div><div class="value" style="font-size:1.2rem">${isCoach()?'Coach':'Parent'}</div></div></div>`;
+  let html=`${lostFoundDashboardHTML(unclaimedLostFound)}<div class="cards"><div class="stat"><div class="label">Joueurs actifs</div><div class="value">${state.players.length}</div></div><div class="stat"><div class="label">Événements ce mois</div><div class="value">${thisMonth.length}</div></div><div class="stat"><div class="label">Prochains matchs</div><div class="value">${upcoming.filter(e=>e.type==='match').length}</div></div><div class="stat"><div class="label">Profil</div><div class="value" style="font-size:1.2rem">${isCoach()?'Coach':'Parent'}</div></div></div>`;
   if(!isCoach() && !linked.length){ html+=`<div class="notice warning"><strong>Aucun enfant lié.</strong> Demande au coach de générer un code joueur, puis utilise “Lier mon enfant” dans Mon compte.</div>`; }
   html+=`<div class="section-head"><h3>Prochains rendez-vous</h3>${isCoach()?'<button class="btn primary small" id="addEventDash">+ Ajouter</button>':''}</div><div class="event-list">${upcoming.length?upcoming.map(eventCard).join(''):'<div class="empty panel">Aucun événement à venir.</div>'}</div>`;
-  $('#content').innerHTML=html; $('#addEventDash')?.addEventListener('click',()=>eventModal()); bindEventButtons();
+  $('#content').innerHTML=html;
+  $('#addEventDash')?.addEventListener('click',()=>eventModal());
+  $$('[data-open-lostfound]').forEach(b=>b.onclick=()=>go('lostfound'));
+  bindEventButtons();
 }
 function eventCard(e){
   const opponent=e.opponent?` · vs ${esc(e.opponent)}`:'';
@@ -1308,87 +1358,121 @@ async function renderAttendance(){
 }
 
 async function renderParentForecast(){
-  let monday=state.attendanceWeek?mondayOf(state.attendanceWeek):mondayOf();
-  state.attendanceWeek=isoLocal(monday);
-  const sunday=addDays(monday,6);
-  const start=isoLocal(monday);
-  const end=isoLocal(sunday);
+  const mode=state.forecastRange||'week';
+  let anchor=state.forecastAnchor?new Date(state.forecastAnchor+'T12:00:00'):new Date();
 
-  // Tous les entraînements, matchs et tournois de la semaine sont pris en compte.
-  // Ainsi, s'il y a 2 matchs dans la même semaine (ou même le même jour),
-  // chacun possède sa propre colonne de présence.
-  const weekEvents=state.events
-    .filter(e=>
-      e.event_date>=start &&
-      e.event_date<=end
-    )
+  // Si on arrive depuis le bouton "Présences" d'un événement, on se place dessus.
+  if(state.selectedEvent){
+    const selected=state.events.find(e=>e.id===state.selectedEvent);
+    if(selected?.event_date){
+      anchor=new Date(selected.event_date+'T12:00:00');
+      state.forecastAnchor=selected.event_date;
+      state.selectedEvent=null;
+    }
+  }
+
+  const anchorIso=isoLocal(anchor);
+  let start, end, periodLabel;
+
+  if(mode==='day'){
+    start=end=anchorIso;
+    periodLabel=fmtFullDate(start);
+  }else if(mode==='month'){
+    const first=new Date(anchor.getFullYear(),anchor.getMonth(),1);
+    const last=new Date(anchor.getFullYear(),anchor.getMonth()+1,0);
+    start=isoLocal(first);
+    end=isoLocal(last);
+    periodLabel=new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(anchor);
+  }else{
+    const monday=mondayOf(anchorIso);
+    const sunday=addDays(monday,6);
+    start=isoLocal(monday);
+    end=isoLocal(sunday);
+    periodLabel=`Semaine du ${fmtLong(start)}`;
+    state.attendanceWeek=start; // compatibilité avec l'ancien état
+  }
+
+  const periodEvents=state.events
+    .filter(e=>e.event_date>=start && e.event_date<=end)
     .sort((a,b)=>
       a.event_date.localeCompare(b.event_date) ||
       (a.start_time||'').localeCompare(b.start_time||'') ||
       (a.title||'').localeCompare(b.title||'','fr')
     );
 
-  const ids=weekEvents.map(e=>e.id).filter(Boolean);
+  const ids=periodEvents.map(e=>e.id).filter(Boolean);
   let avail=[];
   if(ids.length){
     const {data,error}=await sb.from('availability').select('*').in('event_id',ids);
-    if(error) toast(error.message,false);
+    if(error)toast(error.message,false);
     avail=data||[];
   }
 
   const map=new Map(avail.map(x=>[`${x.event_id}:${x.player_id}`,x]));
 
+  const typeLabel=e=>({
+    training:'Entraînement',
+    match:'Match',
+    tournament:'Tournoi',
+    other:'Événement'
+  })[e.type]||'Événement';
+
   const eventLabel=e=>{
     const day=new Intl.DateTimeFormat('fr-BE',{weekday:'short'}).format(new Date(e.event_date+'T12:00:00'));
-    const type=({
-      training:'Entraînement',
-      match:'Match',
-      tournament:'Tournoi',
-      other:'Événement'
-    })[e.type]||'Événement';
     const opponent=e.opponent?` · ${esc(e.opponent)}`:'';
     const time=timeShort(e.start_time)?` · ${timeShort(e.start_time)}`:'';
-    return `<span class="forecast-event-label"><strong>${esc(day)} ${fmtDate(e.event_date)}</strong><small>${type}${opponent}${time}</small></span>`;
+    return `<span class="forecast-event-label">
+      <strong>${esc(day)} ${fmtDate(e.event_date)}</strong>
+      <small>${typeLabel(e)}${opponent}${time}</small>
+    </span>`;
   };
 
   const commentsFor=(pid)=>{
-    const arr=weekEvents
+    const arr=periodEvents
       .map(e=>({event:e,answer:map.get(`${e.id}:${pid}`)}))
       .filter(x=>x.answer?.comment);
-
     if(!arr.length)return '<span class="muted">—</span>';
+    return arr.map(({event,answer})=>
+      `<div class="forecast-comment"><strong>${typeLabel(event)} ${fmtDate(event.event_date)}</strong> : ${esc(answer.comment)}</div>`
+    ).join('');
+  };
 
-    return arr.map(({event,answer})=>{
-      const shortType=({
-        training:'Entraînement',
-        match:'Match',
-        tournament:'Tournoi',
-        other:'Événement'
-      })[event.type]||'Événement';
-      return `<div class="forecast-comment"><strong>${shortType} ${fmtDate(event.event_date)}</strong> : ${esc(answer.comment)}</div>`;
-    }).join('');
+  const stepPeriod=delta=>{
+    if(mode==='day') anchor=addDays(anchor,delta);
+    else if(mode==='month') anchor=new Date(anchor.getFullYear(),anchor.getMonth()+delta,1);
+    else anchor=addDays(anchor,delta*7);
+    state.forecastAnchor=isoLocal(anchor);
+    renderParentForecast();
   };
 
   $('#attendanceBody').innerHTML=`
-    <div class="panel week-toolbar">
-      <button class="btn ghost small" id="prevWeek">← Semaine</button>
-      <strong>Semaine du ${fmtLong(start)}</strong>
-      <button class="btn ghost small" id="nextWeek">Semaine →</button>
-    </div>
-    <div class="section-head">
-      <div>
-        <h3>Réponses des parents</h3>
-        <span class="muted">Tous les événements de la semaine s'ajoutent automatiquement.</span>
+    <div class="forecast-range-bar">
+      <div class="attendance-tabs forecast-range-tabs">
+        <button class="tab-btn ${mode==='day'?'active':''}" data-forecast-range="day">Jour</button>
+        <button class="tab-btn ${mode==='week'?'active':''}" data-forecast-range="week">Semaine</button>
+        <button class="tab-btn ${mode==='month'?'active':''}" data-forecast-range="month">Mois</button>
+      </div>
+      <div class="panel week-toolbar forecast-period-nav">
+        <button class="btn ghost small" id="prevForecast">←</button>
+        <strong>${periodLabel}</strong>
+        <button class="btn ghost small" id="nextForecast">→</button>
       </div>
     </div>
 
-    ${weekEvents.length?`
+    <div class="section-head">
+      <div>
+        <h3>Réponses des parents</h3>
+        <span class="muted">${mode==='day'?'Vue détaillée d’une journée':mode==='month'?'Vue de tous les événements du mois':'Tous les événements de la semaine'}.</span>
+      </div>
+    </div>
+
+    ${periodEvents.length?`
       <div class="table-wrap forecast-table">
         <table>
           <thead>
             <tr>
               <th>Joueur</th>
-              ${weekEvents.map(e=>`<th>${eventLabel(e)}</th>`).join('')}
+              ${periodEvents.map(e=>`<th>${eventLabel(e)}</th>`).join('')}
               <th>Remarques</th>
             </tr>
           </thead>
@@ -1396,7 +1480,7 @@ async function renderParentForecast(){
             ${state.players.map(p=>`
               <tr>
                 <td><strong>${esc(p.first_name)}</strong></td>
-                ${weekEvents.map(e=>{
+                ${periodEvents.map(e=>{
                   const answer=map.get(`${e.id}:${p.id}`);
                   return `<td>${availabilityCell(answer)}</td>`;
                 }).join('')}
@@ -1405,16 +1489,15 @@ async function renderParentForecast(){
           </tbody>
         </table>
       </div>
-    `:'<div class="empty panel">Aucun entraînement ou match prévu cette semaine.</div>'}`;
+    `:`<div class="empty panel">Aucun événement prévu ${mode==='day'?'ce jour':mode==='month'?'ce mois-ci':'cette semaine'}.</div>`}`;
 
-  $('#prevWeek').onclick=()=>{
-    state.attendanceWeek=isoLocal(addDays(monday,-7));
+  $$('[data-forecast-range]').forEach(b=>b.onclick=()=>{
+    state.forecastRange=b.dataset.forecastRange;
+    state.forecastAnchor=anchorIso;
     renderParentForecast();
-  };
-  $('#nextWeek').onclick=()=>{
-    state.attendanceWeek=isoLocal(addDays(monday,7));
-    renderParentForecast();
-  };
+  });
+  $('#prevForecast').onclick=()=>stepPeriod(-1);
+  $('#nextForecast').onclick=()=>stepPeriod(1);
 }
 
 function attendanceStatusIcon(status){
@@ -3219,9 +3302,9 @@ function coachLostFoundCard(item,claims,playerMap,returned=false){
   </div>`;
 }
 
-function lostFoundUploadModal(){
+function lostFoundUploadModal(parentMode=false){
   openModal(`
-    <h2>Ajouter des objets trouvés</h2>
+    <h2>${parentMode?'Signaler un objet trouvé':'Ajouter des objets trouvés'}</h2>
     <form id="lostFoundForm" class="stack">
       <label>Date
         <input id="lostFoundDate" type="date" value="${todayISO()}" required />
@@ -3232,7 +3315,9 @@ function lostFoundUploadModal(){
       <label>Photos
         <input id="lostFoundFiles" type="file" accept="image/*" capture="environment" multiple required />
       </label>
-      <div class="notice">Vous pouvez prendre une photo directement avec le téléphone ou sélectionner plusieurs photos de la galerie. Chaque photo créera un objet séparé.</div>
+      <div class="notice">${parentMode
+        ?"Prenez simplement une photo de l'objet. Les coachs et les autres parents le verront ensuite dans la rubrique Objets trouvés."
+        :"Vous pouvez prendre une photo directement avec le téléphone ou sélectionner plusieurs photos de la galerie. Chaque photo créera un objet séparé."}</div>
       <button class="btn primary" type="submit">Ajouter les objets</button>
     </form>
   `);
@@ -3277,7 +3362,8 @@ function lostFoundUploadModal(){
     setBusy(btn,false);
     closeModal();
     toast(`${files.length} objet(s) ajouté(s)`);
-    await renderCoachLostFound();
+    if(parentMode) await renderParentLostFound();
+    else await renderCoachLostFound();
   };
 }
 
@@ -3338,9 +3424,16 @@ async function renderParentLostFound(){
   const claimed=new Set(claims.map(x=>x.item_id));
 
   $('#content').innerHTML=`
+    <div class="section-head">
+      <div>
+        <h3>Objets trouvés</h3>
+        <span class="muted">Les affaires oubliées par les enfants.</span>
+      </div>
+      <button class="btn secondary" id="parentAddLostFound">+ J'ai trouvé un objet</button>
+    </div>
     <div class="notice">
-      <strong>Objets trouvés</strong><br>
-      Si vous reconnaissez une affaire de <strong>${esc(child?.first_name||'votre enfant')}</strong>, appuyez simplement sur <strong>« C'est à moi »</strong>. Les coachs verront automatiquement le prénom de votre enfant.
+      Si vous reconnaissez une affaire de <strong>${esc(child?.first_name||'votre enfant')}</strong>, appuyez simplement sur <strong>« C'est à moi »</strong>. Les coachs verront automatiquement le prénom de votre enfant.<br><br>
+      Si votre enfant a ramené par erreur un objet qui ne lui appartient pas, vous pouvez aussi le photographier avec <strong>« J'ai trouvé un objet »</strong>.
     </div>
 
     <div class="lostfound-grid parent-lostfound-grid">
@@ -3349,6 +3442,7 @@ async function renderParentLostFound(){
     </div>
   `;
 
+  $('#parentAddLostFound').onclick=()=>lostFoundUploadModal(true);
   $$('[data-lostfound-claim]').forEach(b=>b.onclick=()=>claimLostFoundItem(b.dataset.lostfoundClaim,pid));
   $$('[data-lostfound-unclaim]').forEach(b=>b.onclick=()=>unclaimLostFoundItem(b.dataset.lostfoundUnclaim,pid));
 }

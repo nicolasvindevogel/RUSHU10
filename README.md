@@ -441,3 +441,29 @@ Correction :
 - les événements de type **Événement du club** apparaissent aussi automatiquement ;
 - cela couvre par exemple une séance **Photos d'équipe**, une réunion, une activité spéciale, etc. ;
 - la vue coach correspond désormais à ce que les parents peuvent réellement remplir dans leur espace.
+
+
+## v35 — Filtres de présences + objets trouvés parents + tableau de bord
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_PRESENCES_OBJETS_V35.sql`
+
+### Prévisions parents côté coach
+Ajout de trois filtres :
+- **Jour**
+- **Semaine**
+- **Mois**
+
+Les parents ne voient aucun changement dans leur écran de présence.
+
+### Objets trouvés
+- les parents peuvent désormais cliquer sur **J'ai trouvé un objet** ;
+- ils peuvent prendre/envoyer une photo comme les coachs ;
+- l'objet est visible par tous dans la rubrique ;
+- les droits Supabase restent limités à leur équipe.
+
+### Tableau de bord
+- tout objet encore **non réclamé** apparaît en évidence sur le tableau de bord coach et parent ;
+- les photos restent affichées tant qu'aucun parent n'a cliqué **C'est à moi** ;
+- dès qu'un objet est réclamé, il disparaît automatiquement de cette zone prioritaire ;
+- il reste évidemment consultable dans la rubrique Objets trouvés jusqu'à ce qu'un coach le marque comme rendu.
+
+La colonne `claimed_at` évite d'exposer aux autres parents l'identité de l'enfant qui a réclamé l'objet.
