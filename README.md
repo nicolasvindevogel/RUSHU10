@@ -478,3 +478,15 @@ Dans **Présences > Prévisions parents** côté coach :
 - le compteur s'adapte automatiquement aux filtres **Jour / Semaine / Mois** ;
 - il compte uniquement les réponses marquées **Présent** ;
 - aucun changement côté parent.
+
+
+## v37 — Filtre Jour positionné sur le prochain événement
+Aucun SQL supplémentaire.
+
+Dans **Présences > Prévisions parents > Jour** :
+- lorsqu'on passe du filtre Semaine ou Mois vers **Jour**, l'application se positionne automatiquement sur le prochain événement à partir de la date affichée ;
+- si un événement a lieu le jour même, il est affiché directement ;
+- s'il n'y a plus d'événement futur, le dernier événement passé est utilisé ;
+- les flèches restent disponibles pour naviguer manuellement jour par jour ensuite.
+
+Aucun changement côté parent.

@@ -1357,9 +1357,37 @@ async function renderAttendance(){
   else await renderAttendanceHistory();
 }
 
+
+function nearestForecastEventDate(referenceIso=todayISO()){
+  const dates=[...new Set(
+    state.events
+      .map(e=>e.event_date)
+      .filter(Boolean)
+      .sort()
+  )];
+  if(!dates.length)return referenceIso;
+
+  // Priorité à aujourd'hui ou au prochain événement.
+  const next=dates.find(d=>d>=referenceIso);
+  if(next)return next;
+
+  // S'il n'y a plus d'événement à venir, on revient au dernier événement passé.
+  return dates[dates.length-1];
+}
+
 async function renderParentForecast(){
   const mode=state.forecastRange||'week';
   let anchor=state.forecastAnchor?new Date(state.forecastAnchor+'T12:00:00'):new Date();
+
+  // Lorsqu'on passe sur le filtre Jour, on ouvre directement le prochain
+  // événement à partir de la date de référence au lieu d'afficher une journée vide.
+  if(mode==='day' && state.forecastJumpToNearestEvent){
+    const reference=state.forecastAnchor||todayISO();
+    const target=nearestForecastEventDate(reference);
+    anchor=new Date(target+'T12:00:00');
+    state.forecastAnchor=target;
+    state.forecastJumpToNearestEvent=false;
+  }
 
   // Si on arrive depuis le bouton "Présences" d'un événement, on se place dessus.
   if(state.selectedEvent){
@@ -1502,8 +1530,12 @@ async function renderParentForecast(){
     `:`<div class="empty panel">Aucun événement prévu ${mode==='day'?'ce jour':mode==='month'?'ce mois-ci':'cette semaine'}.</div>`}`;
 
   $$('[data-forecast-range]').forEach(b=>b.onclick=()=>{
-    state.forecastRange=b.dataset.forecastRange;
+    const nextRange=b.dataset.forecastRange;
+    state.forecastRange=nextRange;
     state.forecastAnchor=anchorIso;
+    if(nextRange==='day' && mode!=='day'){
+      state.forecastJumpToNearestEvent=true;
+    }
     renderParentForecast();
   });
   $('#prevForecast').onclick=()=>stepPeriod(-1);
