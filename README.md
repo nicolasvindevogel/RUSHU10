@@ -467,3 +467,14 @@ Les parents ne voient aucun changement dans leur écran de présence.
 - il reste évidemment consultable dans la rubrique Objets trouvés jusqu'à ce qu'un coach le marque comme rendu.
 
 La colonne `claimed_at` évite d'exposer aux autres parents l'identité de l'enfant qui a réclamé l'objet.
+
+
+## v36 — Compteur de présents dans les prévisions
+Aucun SQL supplémentaire.
+
+Dans **Présences > Prévisions parents** côté coach :
+- une ligne **Présents** est ajoutée sous le tableau ;
+- sous chaque événement, le compteur affiche par exemple **14 / 22 joueurs** ;
+- le compteur s'adapte automatiquement aux filtres **Jour / Semaine / Mois** ;
+- il compte uniquement les réponses marquées **Présent** ;
+- aucun changement côté parent.

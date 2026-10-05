@@ -1487,6 +1487,16 @@ async function renderParentForecast(){
                 <td class="remarks-cell">${commentsFor(p.id)}</td>
               </tr>`).join('')}
           </tbody>
+          <tfoot>
+            <tr class="forecast-count-row">
+              <th>Présents</th>
+              ${periodEvents.map(e=>{
+                const presentCount=state.players.filter(p=>map.get(`${e.id}:${p.id}`)?.status==='present').length;
+                return `<th><span class="forecast-count">${presentCount} / ${state.players.length}</span><small> joueurs</small></th>`;
+              }).join('')}
+              <th>—</th>
+            </tr>
+          </tfoot>
         </table>
       </div>
     `:`<div class="empty panel">Aucun événement prévu ${mode==='day'?'ce jour':mode==='month'?'ce mois-ci':'cette semaine'}.</div>`}`;
