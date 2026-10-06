@@ -772,6 +772,71 @@ async function renderChildAttendance(pid,coachMode=false,targetSelector='#conten
   }
   const amap=new Map(avail.map(x=>[x.event_id,x]));
 
+  // Côté parent uniquement : récupère les statuts de toute l'équipe pour la semaine,
+  // sans exposer les commentaires privés des autres familles.
+  let teamAvailability=[];
+  if(!coachMode && events.length){
+    const {data,error}=await sb.rpc('parent_week_availability',{
+      p_start:start,
+      p_end:end
+    });
+    if(error) console.warn('Liste hebdomadaire des présences',error);
+    teamAvailability=data||[];
+  }
+
+  const teamPresenceHTML=()=>{
+    if(coachMode || !events.length)return '';
+
+    const byEvent=new Map();
+    teamAvailability.forEach(a=>{
+      if(!byEvent.has(a.event_id))byEvent.set(a.event_id,[]);
+      byEvent.get(a.event_id).push(a);
+    });
+
+    return `
+      <div class="parent-team-presence">
+        <div class="section-head">
+          <div>
+            <h3>Présences de l'équipe</h3>
+            <span class="muted">Vue de la semaine · uniquement Présent / Absent.</span>
+          </div>
+        </div>
+        <div class="parent-team-presence-grid">
+          ${events.map(e=>{
+            const rows=byEvent.get(e.id)||[];
+            const presentIds=new Set(rows.filter(x=>x.status==='present').map(x=>x.player_id));
+            const absentIds=new Set(rows.filter(x=>x.status==='absent').map(x=>x.player_id));
+            const presents=state.players.filter(p=>presentIds.has(p.id));
+            const absents=state.players.filter(p=>absentIds.has(p.id));
+
+            return `<div class="panel parent-team-presence-card">
+              <div class="parent-team-presence-event">
+                <div>
+                  <strong>${esc(e.title)}</strong>
+                  <small>${fmtFullDate(e.event_date)}${timeShort(e.start_time)?` · ${timeShort(e.start_time)}`:''}</small>
+                </div>
+                ${eventTypePill(e.type)}
+              </div>
+              <div class="parent-team-presence-columns">
+                <div class="parent-team-status present">
+                  <div class="parent-team-status-title">✓ Présents <span>${presents.length}</span></div>
+                  <div class="parent-team-names">
+                    ${presents.length?presents.map(p=>`<span>${esc(p.first_name)}</span>`).join(''):'<small class="muted">Aucun pour le moment</small>'}
+                  </div>
+                </div>
+                <div class="parent-team-status absent">
+                  <div class="parent-team-status-title">✕ Absents <span>${absents.length}</span></div>
+                  <div class="parent-team-names">
+                    ${absents.length?absents.map(p=>`<span>${esc(p.first_name)}</span>`).join(''):'<small class="muted">Aucun pour le moment</small>'}
+                  </div>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  };
+
   target.innerHTML=`
     <div class="panel parent-week-head">
       <button class="btn ghost small" data-child-prev>←</button>
@@ -801,7 +866,9 @@ async function renderChildAttendance(pid,coachMode=false,targetSelector='#conten
           <input class="parent-presence-comment" data-child-comment="${e.id}" value="${esc(a?.comment||'')}" placeholder="Remarque éventuelle / raison d'absence" />
         </div>`;
       }).join(''):'<div class="empty panel">Aucun événement prévu cette semaine.</div>'}
-    </div>`;
+    </div>
+
+    ${teamPresenceHTML()}`;
 
   $('[data-child-prev]',target).onclick=()=>{
     state[weekKey]=isoLocal(addDays(monday,-7));
@@ -834,6 +901,7 @@ async function renderChildAttendance(pid,coachMode=false,targetSelector='#conten
       return toast(error.message,false);
     }
     toast(status==='present'?'Présence enregistrée':'Absence enregistrée');
+    if(!coachMode) await renderParentAttendance();
   });
 
   $$('.parent-presence-comment',target).forEach(inp=>inp.onchange=async()=>{

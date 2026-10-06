@@ -490,3 +490,16 @@ Dans **Présences > Prévisions parents > Jour** :
 - les flèches restent disponibles pour naviguer manuellement jour par jour ensuite.
 
 Aucun changement côté parent.
+
+
+## v38 — Liste hebdomadaire Présents / Absents côté parents
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_PRESENCES_PARENTS_V38.sql`
+
+Dans **Présences** côté parent :
+- l'écran de réponse de leur propre enfant reste inchangé ;
+- sous les réponses, une section **Présences de l'équipe** affiche, événement par événement, les prénoms des joueurs **Présents** et **Absents** ;
+- l'affichage suit uniquement la semaine actuellement consultée ;
+- les joueurs sans réponse ne sont pas affichés ;
+- les commentaires/remarques des autres familles restent privés et ne sont jamais renvoyés aux autres parents.
+
+Aucun changement côté coach.

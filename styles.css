@@ -1528,3 +1528,80 @@ body{
   font-weight:600;
   color:var(--muted);
 }
+
+
+/* === v38 liste hebdomadaire Présents / Absents côté parents === */
+.parent-team-presence{
+  margin-top:22px;
+}
+.parent-team-presence-grid{
+  display:grid;
+  gap:12px;
+}
+.parent-team-presence-card{
+  overflow:hidden;
+}
+.parent-team-presence-event{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding-bottom:10px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+.parent-team-presence-event > div{
+  display:grid;
+  gap:2px;
+}
+.parent-team-presence-event small{
+  color:var(--muted);
+}
+.parent-team-presence-columns{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:12px;
+}
+.parent-team-status{
+  border-radius:14px;
+  padding:11px;
+}
+.parent-team-status.present{
+  background:rgba(28,173,82,.10);
+  border:1px solid rgba(28,173,82,.28);
+}
+.parent-team-status.absent{
+  background:rgba(220,65,65,.08);
+  border:1px solid rgba(220,65,65,.25);
+}
+.parent-team-status-title{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  font-weight:900;
+  margin-bottom:8px;
+}
+.parent-team-status.present .parent-team-status-title{
+  color:#79e99a;
+}
+.parent-team-status.absent .parent-team-status-title{
+  color:#ff9b9b;
+}
+.parent-team-names{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.parent-team-names span{
+  display:inline-flex;
+  padding:5px 8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  font-size:.9rem;
+  font-weight:700;
+}
+@media(max-width:560px){
+  .parent-team-presence-columns{
+    grid-template-columns:1fr;
+  }
+}

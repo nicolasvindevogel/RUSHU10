@@ -1,14 +1,14 @@
 {
-  "build": "v37",
-  "published_at": "2026-10-05T18:30:00+02:00",
+  "build": "v38",
+  "published_at": "2026-10-06T20:05:00+02:00",
   "roles": {
     "coach": {
       "version": 12,
       "message": "Le filtre Jour des prévisions ouvre maintenant automatiquement le prochain événement."
     },
     "parent": {
-      "version": 8,
-      "message": "Les parents peuvent maintenant signaler un objet trouvé et les objets non réclamés sont mis en avant sur l'accueil."
+      "version": 9,
+      "message": "Les parents peuvent maintenant voir la liste des présents et absents de l'équipe pour chaque événement de la semaine."
     }
   }
 }
