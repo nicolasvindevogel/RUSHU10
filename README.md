@@ -503,3 +503,26 @@ Dans **Présences** côté parent :
 - les commentaires/remarques des autres familles restent privés et ne sont jamais renvoyés aux autres parents.
 
 Aucun changement côté coach.
+
+
+## v39 — Validation des compositions par les 3 coachs
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_VALIDATION_COMPOSITIONS_V39.sql`
+
+### Côté coach
+- une composition peut être préparée et enregistrée comme **brouillon** ;
+- elle reste totalement invisible aux parents ;
+- Nicolas, Thibault et Maxime disposent chacun de leur propre validation ;
+- l'écran affiche clairement **0/3, 1/3, 2/3 ou 3/3** ;
+- à **3/3**, la composition est automatiquement publiée aux parents ;
+- un coach peut retirer sa validation ;
+- toute modification enregistrée de la liste des joueurs annule automatiquement toutes les validations et remet la composition en brouillon.
+
+### Côté parent
+- avant 3 validations : affichage **Composition à venir** ;
+- aucune liste de joueurs n'est lisible via l'interface ni directement via la policy `match_players` ;
+- après 3 validations : le bouton **Composition** apparaît et l'image devient accessible.
+
+Les trois coachs requis sont actuellement :
+- Nicolas VINDEVOGEL
+- Thibault THERY
+- Maxime DELANNOY

@@ -1605,3 +1605,98 @@ body{
     grid-template-columns:1fr;
   }
 }
+
+
+/* === v39 validation des compositions par les 3 coachs === */
+.lineup-approval-panel{
+  margin:14px 0 18px;
+  padding:14px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:16px;
+  background:rgba(255,255,255,.035);
+}
+.lineup-approval-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+.lineup-approval-head > div{
+  display:grid;
+  gap:4px;
+}
+.lineup-approval-head small{
+  color:var(--muted);
+  font-weight:800;
+  letter-spacing:.06em;
+}
+.lineup-approval-head strong{
+  font-size:1.05rem;
+}
+.lineup-approval-head span:not(.lineup-publish-state){
+  color:var(--muted);
+  line-height:1.35;
+}
+.lineup-publish-state{
+  padding:7px 10px;
+  border-radius:999px;
+  white-space:nowrap;
+  font-size:.85rem;
+  font-weight:900;
+}
+.lineup-publish-state.draft{
+  background:rgba(255,190,60,.12);
+  color:#ffd27a;
+  border:1px solid rgba(255,190,60,.25);
+}
+.lineup-publish-state.published{
+  background:rgba(28,173,82,.14);
+  color:#79e99a;
+  border:1px solid rgba(28,173,82,.35);
+}
+.lineup-coach-approvals{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin:13px 0;
+}
+.lineup-coach-approval{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  grid-template-areas:
+    "icon name"
+    "icon state";
+  column-gap:8px;
+  align-items:center;
+  padding:9px;
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.08);
+}
+.lineup-coach-approval > span{
+  grid-area:icon;
+  width:27px;
+  height:27px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:rgba(255,255,255,.08);
+  font-weight:900;
+}
+.lineup-coach-approval > strong{grid-area:name;}
+.lineup-coach-approval > small{
+  grid-area:state;
+  color:var(--muted);
+}
+.lineup-coach-approval.approved{
+  border-color:rgba(28,173,82,.35);
+  background:rgba(28,173,82,.08);
+}
+.lineup-coach-approval.approved > span{
+  background:rgba(28,173,82,.22);
+  color:#79e99a;
+}
+@media(max-width:560px){
+  .lineup-approval-head{flex-direction:column;}
+  .lineup-coach-approvals{grid-template-columns:1fr;}
+}

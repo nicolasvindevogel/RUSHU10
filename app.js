@@ -206,6 +206,11 @@ async function go(page){
 }
 
 const COACH_KEYS = new Set(['coach-nicolas','coach-thibaut','coach-maxime']);
+const COACH_LABELS = {
+  'coach-nicolas':'Nicolas',
+  'coach-thibaut':'Thibault',
+  'coach-maxime':'Maxime'
+};
 
 async function ensureRpcSession(){
   const user=await ensureSession();
@@ -1911,7 +1916,9 @@ function matchCardHTML(e,{parent=false,highlight=false,past=false}={}){
     </div>
     <div class="match-actions">
       ${parent
-        ? `<button class="btn primary small" data-parent-lineup="${e.id}">Composition</button>`
+        ? (e.lineup_published
+            ? `<button class="btn primary small" data-parent-lineup="${e.id}">Composition</button>`
+            : `<span class="pill gray">Composition à venir</span>`)
         : `<button class="btn ghost small" data-match-lineup="${e.id}">Composition</button>
            <button class="btn ghost small" data-matchsheet="${e.id}">Feuille de match</button>
            <button class="btn secondary small" data-edit-event="${e.id}">Modifier</button>`}
@@ -1974,46 +1981,167 @@ async function renderMatches(){
   ));
 }
 
+async function getLineupApprovalStatus(matchId){
+  const {data,error}=await sb.rpc('match_lineup_approval_status',{p_event_id:matchId});
+  if(error){
+    console.error('Statut validation composition',error);
+    return {approved_keys:[],approved_count:0,published:false};
+  }
+  return {
+    approved_keys:Array.isArray(data?.approved_keys)?data.approved_keys:[],
+    approved_count:Number(data?.approved_count||0),
+    published:!!data?.published
+  };
+}
+
+function lineupApprovalHTML(status){
+  const approved=new Set(status.approved_keys||[]);
+  const me=state.identity?.identity_key;
+  return `
+    <div class="lineup-approval-panel">
+      <div class="lineup-approval-head">
+        <div>
+          <small>VALIDATION DES COACHS</small>
+          <strong>${status.published?'Composition publiée':'Brouillon interne'}</strong>
+          <span>${status.published
+            ? 'Les 3 coachs ont validé. La composition est maintenant visible par les parents.'
+            : `Invisible aux parents tant que les 3 coachs n'ont pas validé (${status.approved_count}/3).`}</span>
+        </div>
+        <span class="lineup-publish-state ${status.published?'published':'draft'}">${status.published?'✓ Publiée':'🔒 Brouillon'}</span>
+      </div>
+      <div class="lineup-coach-approvals">
+        ${Object.entries(COACH_LABELS).map(([key,label])=>`
+          <div class="lineup-coach-approval ${approved.has(key)?'approved':''}">
+            <span>${approved.has(key)?'✓':'…'}</span>
+            <strong>${esc(label)}</strong>
+            <small>${approved.has(key)?'Validé':'En attente'}</small>
+          </div>`).join('')}
+      </div>
+      ${COACH_KEYS.has(me)?`
+        <button class="btn ${approved.has(me)?'ghost':'primary'} full" id="toggleLineupApproval">
+          ${approved.has(me)?'Retirer ma validation':'✓ Valider cette composition'}
+        </button>`:''}
+    </div>`;
+}
+
+async function refreshLineupApprovalPanel(matchId){
+  const host=$('#lineupApprovalArea');
+  if(!host)return;
+  const status=await getLineupApprovalStatus(matchId);
+  host.innerHTML=lineupApprovalHTML(status);
+
+  $('#toggleLineupApproval')?.addEventListener('click',async()=>{
+    const me=state.identity?.identity_key;
+    if(!COACH_KEYS.has(me))return;
+
+    // Si le coach a changé la sélection sans l'enregistrer, on enregistre
+    // d'abord le brouillon. Cela invalide logiquement les anciennes validations.
+    if(state.lineupDirty){
+      const saved=await saveLineup(matchId,true);
+      if(saved===false)return;
+    }
+
+    const latest=await getLineupApprovalStatus(matchId);
+    const currentlyApproved=(latest.approved_keys||[]).includes(me);
+    const btn=$('#toggleLineupApproval');
+    setBusy(btn,true,currentlyApproved?'Retrait…':'Validation…');
+
+    const {error}=await sb.rpc('set_match_lineup_approval',{
+      p_event_id:matchId,
+      p_approved:!currentlyApproved
+    });
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+
+    toast(currentlyApproved?'Validation retirée':'Composition validée');
+    await refreshLineupApprovalPanel(matchId);
+  });
+}
+
 async function matchLineupModal(match){
   if(!match)return;
-  const {data:sel,error}=await sb.from('match_players').select('player_id').eq('event_id',match.id);
+  const {data:sel,error}=await sb.from('match_players')
+    .select('player_id')
+    .eq('event_id',match.id);
   if(error)return toast(error.message,false);
+
   const chosen=new Set((sel||[]).map(x=>x.player_id));
+  state.lineupDirty=false;
+
   openModal(`
     <h2>Composition · ${esc(match.opponent||'Match')}</h2>
     <p class="muted">${fmtLong(match.event_date)} · ${timeShort(match.start_time)||'heure à préciser'} ${match.location?'· '+esc(match.location):''}</p>
-    <p>Sélectionne les joueurs convoqués.</p>
+
+    <div id="lineupApprovalArea">
+      <div class="empty panel">Chargement des validations…</div>
+    </div>
+
+    <p><strong>Composition de travail :</strong> sélectionnez les joueurs convoqués. Vous pouvez l'enregistrer et la modifier autant de fois que nécessaire avant publication.</p>
     <div class="player-check-grid compact">
       ${state.players.map(p=>`<button type="button" class="player-check ${chosen.has(p.id)?'present':''}" data-lineup-player="${p.id}">
         <span class="check-dot">${chosen.has(p.id)?'✓':''}</span><strong>${esc(p.first_name)}</strong>
       </button>`).join('')}
     </div>
     <div class="modal-actions">
-      <button class="btn secondary" id="saveLineup">Enregistrer la composition</button>
-      <button class="btn primary" id="generateMatchImage">Générer l'image</button>
+      <button class="btn secondary" id="saveLineup">Enregistrer le brouillon</button>
+      <button class="btn ghost" id="generateMatchImage">Générer l'image</button>
+    </div>
+    <div class="notice">
+      Toute modification enregistrée de la composition annule les validations déjà données. Les 3 coachs devront alors valider à nouveau avant que les parents puissent la voir.
     </div>
     <div id="matchImageArea"></div>`);
-  $$('[data-lineup-player]').forEach(b=>b.onclick=()=>{b.classList.toggle('present');b.querySelector('.check-dot').textContent=b.classList.contains('present')?'✓':''});
+
+  $$('[data-lineup-player]').forEach(b=>b.onclick=()=>{
+    b.classList.toggle('present');
+    b.querySelector('.check-dot').textContent=b.classList.contains('present')?'✓':'';
+    state.lineupDirty=true;
+  });
+
   $('#saveLineup').onclick=()=>saveLineup(match.id);
   $('#generateMatchImage').onclick=async()=>{
-    const ok=await saveLineup(match.id,true);
-    if(ok!==false) await generateMatchImage(match);
+    if(state.lineupDirty){
+      const ok=await saveLineup(match.id,true);
+      if(ok===false)return;
+    }
+    await generateMatchImage(match);
   };
+
+  await refreshLineupApprovalPanel(match.id);
 }
 
 async function saveLineup(matchId,silent=false){
   const btn=$('#saveLineup');
   if(btn)setBusy(btn,true);
+
   const ids=$$('[data-lineup-player].present').map(b=>b.dataset.lineupPlayer);
+
   const {error:delError}=await sb.from('match_players').delete().eq('event_id',matchId);
-  if(delError){if(btn)setBusy(btn,false);toast(delError.message,false);return false}
-  if(ids.length){
-    const rows=ids.map((pid,i)=>({event_id:matchId,player_id:pid,position_order:i+1,selected_by:state.user.id}));
-    const {error}=await sb.from('match_players').insert(rows);
-    if(error){if(btn)setBusy(btn,false);toast(error.message,false);return false}
+  if(delError){
+    if(btn)setBusy(btn,false);
+    toast(delError.message,false);
+    return false;
   }
+
+  if(ids.length){
+    const rows=ids.map((pid,i)=>({
+      event_id:matchId,
+      player_id:pid,
+      position_order:i+1,
+      selected_by:state.user.id
+    }));
+    const {error}=await sb.from('match_players').insert(rows);
+    if(error){
+      if(btn)setBusy(btn,false);
+      toast(error.message,false);
+      return false;
+    }
+  }
+
+  state.lineupDirty=false;
   if(btn)setBusy(btn,false);
-  if(!silent)toast(`Composition enregistrée : ${ids.length} joueur(s)`);
+  if(!silent)toast(`Brouillon enregistré : ${ids.length} joueur(s)`);
+
+  await refreshLineupApprovalPanel(matchId);
   return true;
 }
 
@@ -2183,6 +2311,14 @@ async function openMatchSheetPrep(match){
 
 async function renderParentMatches(){
   await loadCore();
+
+  const {data:published,error:publishedError}=await sb.rpc('published_match_lineups');
+  if(publishedError)console.warn('Compositions publiées',publishedError);
+  const publishedIds=new Set((published||[]).map(x=>x.event_id));
+  state.events.forEach(e=>{
+    if(e.type==='match')e.lineup_published=publishedIds.has(e.id);
+  });
+
   const today=todayISO();
 
   const upcoming=state.events
@@ -2234,7 +2370,19 @@ async function renderParentMatches(){
 }
 
 async function openParentMatchComposition(match){
-  if(!match) return;
+  if(!match)return;
+
+  const {data:isPublished,error:pubError}=await sb.rpc('is_match_lineup_published',{p_event_id:match.id});
+  if(pubError)return toast(pubError.message,false);
+  if(!isPublished){
+    openModal(`
+      <h2>Composition · ${esc(match.opponent||'Match')}</h2>
+      <p class="muted">${fmtFullDate(match.event_date)} · ${timeShort(match.start_time)||'Heure à préciser'}</p>
+      <div class="notice">La composition est encore en préparation par les coachs.</div>
+    `);
+    return;
+  }
+
   const {data:sel,error}=await sb.from('match_players')
     .select('player_id,position_order')
     .eq('event_id',match.id)

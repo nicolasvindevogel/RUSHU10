@@ -1,14 +1,14 @@
 {
-  "build": "v38",
-  "published_at": "2026-10-06T20:05:00+02:00",
+  "build": "v39",
+  "published_at": "2026-10-08T20:30:00+02:00",
   "roles": {
     "coach": {
-      "version": 12,
-      "message": "Le filtre Jour des prévisions ouvre maintenant automatiquement le prochain événement."
+      "version": 13,
+      "message": "Les compositions restent maintenant en brouillon jusqu'à validation des 3 coachs."
     },
     "parent": {
-      "version": 9,
-      "message": "Les parents peuvent maintenant voir la liste des présents et absents de l'équipe pour chaque événement de la semaine."
+      "version": 10,
+      "message": "Une composition n'apparaît désormais qu'après validation par les 3 coachs."
     }
   }
 }
