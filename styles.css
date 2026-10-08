@@ -1700,3 +1700,30 @@ body{
   .lineup-approval-head{flex-direction:column;}
   .lineup-coach-approvals{grid-template-columns:1fr;}
 }
+
+
+/* === v40 historique : totaux séparés entraînements / matchs === */
+.attendance-split-count{
+  min-width:74px;
+  text-align:center;
+}
+.attendance-split-count strong{
+  display:block;
+  font-size:1rem;
+  line-height:1.05;
+}
+.attendance-split-count small{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-weight:600;
+  font-size:.72rem;
+}
+.attendance-total-training,
+.training-count strong{
+  color:#79e99a;
+}
+.attendance-total-match,
+.match-count strong{
+  color:#8bc4ff;
+}

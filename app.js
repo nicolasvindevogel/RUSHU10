@@ -1650,10 +1650,20 @@ async function renderAttendanceHistory(){
   const attendanceMap=new Map(attendance.map(a=>[`${a.event_id}:${a.player_id}`,a]));
 
   const summaryFor=pid=>{
-    const vals=events.map(e=>attendanceMap.get(`${e.id}:${pid}`)?.status).filter(Boolean);
-    const present=vals.filter(s=>s==='present'||s==='late').length;
-    const absent=vals.filter(s=>s==='absent').length;
-    return {present,absent,total:vals.length};
+    const calc=type=>{
+      const typeEvents=events.filter(e=>e.type===type);
+      const vals=typeEvents
+        .map(e=>attendanceMap.get(`${e.id}:${pid}`)?.status)
+        .filter(Boolean);
+      const present=vals.filter(s=>s==='present'||s==='late').length;
+      const absent=vals.filter(s=>s==='absent').length;
+      return {present,absent,total:vals.length,scheduled:typeEvents.length};
+    };
+
+    return {
+      training:calc('training'),
+      match:calc('match')
+    };
   };
 
   $('#attendanceBody').innerHTML=`
@@ -1685,8 +1695,8 @@ async function renderAttendanceHistory(){
                   <small>${day}</small><strong>${date}</strong><span>${e.type==='match'?'M':e.type==='tournament'?'T':'E'}</span>
                 </th>`;
               }).join('')}
-              <th class="attendance-total-head">Prés.</th>
-              <th class="attendance-total-head">Abs.</th>
+              <th class="attendance-total-head attendance-total-training">Entraîn.</th>
+              <th class="attendance-total-head attendance-total-match">Matchs</th>
             </tr>
           </thead>
           <tbody>
@@ -1703,15 +1713,21 @@ async function renderAttendanceHistory(){
                     </button>
                   </td>`;
                 }).join('')}
-                <td class="attendance-count present-count">${s.present}</td>
-                <td class="attendance-count absent-count">${s.absent}</td>
+                <td class="attendance-count attendance-split-count training-count">
+                  <strong>${s.training.present}/${s.training.scheduled}</strong>
+                  <small>prés.</small>
+                </td>
+                <td class="attendance-count attendance-split-count match-count">
+                  <strong>${s.match.present}/${s.match.scheduled}</strong>
+                  <small>prés.</small>
+                </td>
               </tr>`;
             }).join('')}
           </tbody>
         </table>
       </div>
       <div class="attendance-history-actions">
-        <span class="muted">E = entraînement · M = match · T = tournoi · • = remarque enregistrée</span>
+        <span class="muted">E = entraînement · M = match · T = tournoi · • = remarque enregistrée · Totaux = présents / événements prévus</span>
       </div>
     `:'<div class="empty panel">Aucun entraînement, match ou tournoi pour ce mois.</div>'}
   `;

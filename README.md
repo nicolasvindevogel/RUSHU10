@@ -526,3 +526,14 @@ Les trois coachs requis sont actuellement :
 - Nicolas VINDEVOGEL
 - Thibault THERY
 - Maxime DELANNOY
+
+
+## v40 — Historique des présences : entraînements / matchs séparés
+Aucun SQL supplémentaire.
+
+Dans **Présences > Historique mensuel** côté coach :
+- les anciens totaux globaux Présents / Absents sont remplacés par deux colonnes distinctes ;
+- **Entraîn.** affiche le nombre de présences aux entraînements sur le nombre d'entraînements prévus (ex. `7/8`) ;
+- **Matchs** affiche le nombre de présences aux matchs sur le nombre de matchs prévus (ex. `3/4`) ;
+- les retards restent comptés comme présence, comme auparavant ;
+- les tournois restent visibles dans la grille jour par jour mais ne sont pas mélangés aux totaux entraînements ou matchs.
