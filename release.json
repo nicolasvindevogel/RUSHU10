@@ -1,10 +1,10 @@
 {
-  "build": "v40",
-  "published_at": "2026-10-08T20:40:00+02:00",
+  "build": "v41",
+  "published_at": "2026-10-09T15:40:00+02:00",
   "roles": {
     "coach": {
-      "version": 14,
-      "message": "L'historique des présences sépare maintenant les totaux entraînements et matchs."
+      "version": 15,
+      "message": "La composition signale maintenant clairement les joueurs annoncés absents par leurs parents."
     },
     "parent": {
       "version": 10,

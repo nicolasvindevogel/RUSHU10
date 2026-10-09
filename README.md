@@ -537,3 +537,15 @@ Dans **Présences > Historique mensuel** côté coach :
 - **Matchs** affiche le nombre de présences aux matchs sur le nombre de matchs prévus (ex. `3/4`) ;
 - les retards restent comptés comme présence, comme auparavant ;
 - les tournois restent visibles dans la grille jour par jour mais ne sont pas mélangés aux totaux entraînements ou matchs.
+
+
+## v41 — Alerte joueurs absents dans la composition
+Aucun SQL supplémentaire.
+
+Dans **Matchs > Composition** côté coach :
+- un joueur déclaré **Absent** par ses parents pour ce match est affiché en rouge avec la mention **✕ Absent** ;
+- un joueur déclaré **Présent** reçoit une petite mention verte **✓ Présent** ;
+- si un coach essaie malgré tout de sélectionner un joueur annoncé absent, une confirmation explicite est demandée ;
+- le coach peut toujours forcer la sélection si l'information a changé au dernier moment.
+
+Le fonctionnement du brouillon et de la validation par les 3 coachs reste inchangé.

@@ -2082,6 +2082,19 @@ async function matchLineupModal(match){
   if(error)return toast(error.message,false);
 
   const chosen=new Set((sel||[]).map(x=>x.player_id));
+
+  // Réponses des parents pour CE match, afin d'éviter de convoquer
+  // par erreur un joueur annoncé absent.
+  const {data:availabilityRows,error:availabilityError}=await sb.from('availability')
+    .select('player_id,status')
+    .eq('event_id',match.id);
+  if(availabilityError)console.warn('Disponibilités du match',availabilityError);
+
+  const availabilityByPlayer=new Map((availabilityRows||[]).map(a=>[a.player_id,a.status]));
+  const absentIds=new Set((availabilityRows||[])
+    .filter(a=>a.status==='absent')
+    .map(a=>a.player_id));
+
   state.lineupDirty=false;
 
   openModal(`
@@ -2094,9 +2107,21 @@ async function matchLineupModal(match){
 
     <p><strong>Composition de travail :</strong> sélectionnez les joueurs convoqués. Vous pouvez l'enregistrer et la modifier autant de fois que nécessaire avant publication.</p>
     <div class="player-check-grid compact">
-      ${state.players.map(p=>`<button type="button" class="player-check ${chosen.has(p.id)?'present':''}" data-lineup-player="${p.id}">
-        <span class="check-dot">${chosen.has(p.id)?'✓':''}</span><strong>${esc(p.first_name)}</strong>
-      </button>`).join('')}
+      ${state.players.map(p=>{
+        const parentStatus=availabilityByPlayer.get(p.id);
+        const isAbsent=parentStatus==='absent';
+        const isPresent=parentStatus==='present';
+        return `<button type="button"
+          class="player-check ${chosen.has(p.id)?'present':''} ${isAbsent?'parent-absent':''}"
+          data-lineup-player="${p.id}"
+          data-parent-status="${parentStatus||''}">
+          <span class="check-dot">${chosen.has(p.id)?'✓':''}</span>
+          <span class="lineup-player-label">
+            <strong>${esc(p.first_name)}</strong>
+            ${isAbsent?'<small class="lineup-parent-absent">✕ Absent</small>':isPresent?'<small class="lineup-parent-present">✓ Présent</small>':''}
+          </span>
+        </button>`;
+      }).join('')}
     </div>
     <div class="modal-actions">
       <button class="btn secondary" id="saveLineup">Enregistrer le brouillon</button>
@@ -2108,6 +2133,17 @@ async function matchLineupModal(match){
     <div id="matchImageArea"></div>`);
 
   $$('[data-lineup-player]').forEach(b=>b.onclick=()=>{
+    const selecting=!b.classList.contains('present');
+    const parentSaidAbsent=b.dataset.parentStatus==='absent';
+
+    if(selecting && parentSaidAbsent){
+      const player=state.players.find(p=>p.id===b.dataset.lineupPlayer);
+      const ok=window.confirm(
+        `${player?.first_name||'Ce joueur'} a été indiqué absent par ses parents pour ce match.\n\nVoulez-vous quand même le sélectionner ?`
+      );
+      if(!ok)return;
+    }
+
     b.classList.toggle('present');
     b.querySelector('.check-dot').textContent=b.classList.contains('present')?'✓':'';
     state.lineupDirty=true;

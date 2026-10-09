@@ -1727,3 +1727,33 @@ body{
 .match-count strong{
   color:#8bc4ff;
 }
+
+
+/* === v41 composition : indication disponibilité parent === */
+.lineup-player-label{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  min-width:0;
+}
+.lineup-parent-absent,
+.lineup-parent-present{
+  font-size:.72rem;
+  font-weight:900;
+  line-height:1;
+}
+.lineup-parent-absent{
+  color:#ff8b8b;
+}
+.lineup-parent-present{
+  color:#79e99a;
+}
+.player-check.parent-absent{
+  border-color:rgba(220,65,65,.40);
+  background:rgba(220,65,65,.08);
+}
+.player-check.parent-absent.present{
+  border-color:rgba(255,120,120,.75);
+  box-shadow:inset 0 0 0 1px rgba(255,120,120,.25);
+}
