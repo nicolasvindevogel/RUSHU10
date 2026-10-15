@@ -1,14 +1,14 @@
 {
-  "build": "v41",
-  "published_at": "2026-10-09T15:40:00+02:00",
+  "build": "v42",
+  "published_at": "2026-10-15T16:50:00+02:00",
   "roles": {
     "coach": {
-      "version": 15,
-      "message": "La composition signale maintenant clairement les joueurs annoncés absents par leurs parents."
+      "version": 16,
+      "message": "Les coachs peuvent maintenant créer plusieurs accès parents indépendants pour un même joueur."
     },
     "parent": {
-      "version": 10,
-      "message": "Une composition n'apparaît désormais qu'après validation par les 3 coachs."
+      "version": 11,
+      "message": "L'application prend désormais en charge plusieurs accès parents indépendants pour un même enfant."
     }
   }
 }

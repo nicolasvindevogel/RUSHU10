@@ -549,3 +549,30 @@ Dans **Matchs > Composition** côté coach :
 - le coach peut toujours forcer la sélection si l'information a changé au dernier moment.
 
 Le fonctionnement du brouillon et de la validation par les 3 coachs reste inchangé.
+
+
+## v42 — Plusieurs accès parents pour un même joueur
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_MULTI_ACCES_PARENTS_V42.sql`
+
+### Exemple Amadeo
+L'accès actuel d'Amadeo reste exactement comme il est : **aucun PIN existant n'est modifié**.
+
+Depuis **Coachs > Joueurs > Accès parents** :
+- ouvrir Amadeo ;
+- cliquer sur **+ Ajouter un accès parent** ;
+- saisir par exemple `Papa` ;
+- choisir directement un PIN personnel à 6 chiffres ;
+- le nouveau profil apparaîtra à la connexion comme **Amadeo – Papa**.
+
+### Fonctionnement
+- plusieurs accès indépendants peuvent pointer vers le même joueur ;
+- chaque accès possède son propre PIN ;
+- présences, matchs, sondages et données du joueur restent communs ;
+- une réponse de présence concerne toujours Amadeo, quel que soit le parent qui la saisit ;
+- chaque accès parent possède **sa propre conversation privée** avec les trois coachs ;
+- les parents ne voient pas la conversation privée de l'autre accès ;
+- côté coach, la messagerie indique le joueur ET le parent concerné ;
+- un coach peut changer le PIN d'un accès sans modifier les autres.
+
+### Compatibilité
+Le script conserve les identités, PIN et conversations existants. L'accès historique de chaque joueur est marqué comme **accès principal** et reste fonctionnel.

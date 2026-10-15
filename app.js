@@ -316,7 +316,7 @@ async function loadUser(user){
     .from('app_identity_sessions')
     .select('identity_key')
     .eq('auth_user_id',user.id)
-    .order('created_at',{ascending:false})
+    .order('last_login_at',{ascending:false})
     .limit(1)
     .maybeSingle();
 
@@ -932,18 +932,31 @@ async function renderChildAttendance(pid,coachMode=false,targetSelector='#conten
 
 async function getOrCreateConversation(){
   const pid=state.parentPlayerId;
-  if(!pid)return null;
-  let {data,error}=await sb.from('conversations').select('*').eq('player_id',pid).maybeSingle();
+  const identityKey=state.identity?.identity_key;
+  if(!pid || !identityKey)return null;
+
+  let {data,error}=await sb.from('conversations')
+    .select('*')
+    .eq('player_id',pid)
+    .eq('parent_identity_key',identityKey)
+    .maybeSingle();
+
   if(error)return toast(error.message,false),null;
   if(data)return data;
-  const created=await sb.from('conversations').insert({team_id:state.team.id,player_id:pid}).select().single();
+
+  const created=await sb.from('conversations').insert({
+    team_id:state.team.id,
+    player_id:pid,
+    parent_identity_key:identityKey
+  }).select().single();
+
   if(created.error)return toast(created.error.message,false),null;
   return created.data;
 }
 
 function messageBubble(m){
   const mine=m.sender_user_id===state.user.id;
-  const sender=m.sender_role==='coach'?(m.sender_name||'Coach'):'Parent';
+  const sender=m.sender_role==='coach'?(m.sender_name||'Coach'):(m.sender_name||'Parent');
   const dt=new Date(m.created_at);
   const time=new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(dt);
   return `<div class="chat-row ${mine?'mine':'theirs'}">
@@ -997,7 +1010,7 @@ async function renderParentContact(){
       conversation_id:conv.id,
       sender_user_id:state.user.id,
       sender_role:'parent',
-      sender_name:`Parent de ${child?.first_name||state.identity?.display_name||''}`,
+      sender_name:state.identity?.display_name||`Parent de ${child?.first_name||''}`,
       body
     });
     setBusy(btn,false);
@@ -1008,16 +1021,27 @@ async function renderParentContact(){
 }
 
 async function renderCoachMessages(){
-  const {data:convs,error}=await sb.from('conversations')
-    .select('id,player_id,updated_at,players(first_name,last_name)')
-    .eq('team_id',state.team.id)
-    .order('updated_at',{ascending:false});
+  const {data,error}=await sb.rpc('coach_conversation_list',{p_team_id:state.team.id});
   if(error)return toast(error.message,false);
 
-  const conversations=convs||[];
+  const conversations=(data||[]).map(c=>({
+    id:c.id,
+    player_id:c.player_id,
+    parent_identity_key:c.parent_identity_key,
+    parent_label:c.parent_display_name||'Parent',
+    updated_at:c.updated_at,
+    players:{
+      first_name:c.player_first_name,
+      last_name:c.player_last_name
+    }
+  }));
+
   let latest={};
   if(conversations.length){
-    const {data:msgs}=await sb.from('messages').select('*').in('conversation_id',conversations.map(c=>c.id)).order('created_at',{ascending:false});
+    const {data:msgs}=await sb.from('messages')
+      .select('*')
+      .in('conversation_id',conversations.map(c=>c.id))
+      .order('created_at',{ascending:false});
     (msgs||[]).forEach(m=>{if(!latest[m.conversation_id])latest[m.conversation_id]=m});
   }
 
@@ -1029,16 +1053,21 @@ async function renderCoachMessages(){
           const last=latest[c.id];
           return `<button class="conversation-item" data-conversation="${c.id}">
             <span class="conversation-avatar">${esc((c.players?.first_name||'?').slice(0,1).toUpperCase())}</span>
-            <span class="conversation-text"><strong>${esc(c.players?.first_name||'Joueur')}</strong>
-              <small>${last?esc(last.body.slice(0,65)):'Aucun message'}</small></span>
+            <span class="conversation-text">
+              <strong>${esc(c.players?.first_name||'Joueur')} · ${esc(c.parent_label)}</strong>
+              <small>${last?esc(last.body.slice(0,65)):'Aucun message'}</small>
+            </span>
           </button>`;
         }).join(''):'<div class="empty panel">Aucune conversation parent pour le moment.</div>'}
       </div>
-      <div class="coach-chat-placeholder" id="coachChatPanel"><div>💬</div><strong>Sélectionnez une conversation</strong><span>Les messages envoyés par les parents sont visibles par les trois coachs.</span></div>
+      <div class="coach-chat-placeholder" id="coachChatPanel"><div>💬</div><strong>Sélectionnez une conversation</strong><span>Chaque accès parent possède sa conversation privée avec les trois coachs.</span></div>
     </div>`;
 
   $('#coachNotif').onclick=requestNotifications;
-  $$('[data-conversation]').forEach(b=>b.onclick=()=>openCoachConversation(b.dataset.conversation,conversations.find(c=>c.id===b.dataset.conversation)));
+  $$('[data-conversation]').forEach(b=>b.onclick=()=>openCoachConversation(
+    b.dataset.conversation,
+    conversations.find(c=>c.id===b.dataset.conversation)
+  ));
 }
 
 async function openCoachConversation(id,conv){
@@ -1050,8 +1079,8 @@ async function openCoachConversation(id,conv){
       <div class="chat-header coach-chat-header">
         <button class="icon-btn coach-chat-back" id="coachChatBack" aria-label="Retour">←</button>
         <div>
-          <strong>${esc(conv?.players?.first_name||'Joueur')}</strong>
-          <small>Parent ↔ les 3 coachs U10</small>
+          <strong>${esc(conv?.players?.first_name||'Joueur')} · ${esc(conv?.parent_label||'Parent')}</strong>
+          <small>Conversation privée ↔ les 3 coachs U10</small>
         </div>
       </div>
       <div class="chat-messages" id="chatMessages">${messages.map(messageBubble).join('')||'<div class="chat-empty">Aucun message.</div>'}</div>
@@ -2800,9 +2829,13 @@ async function renderPlayers(){
   if(!isCoach()){go('dashboard');return;}
   await loadCore();
 
-  const {data:links}=await sb.from('player_guardians').select('player_id,user_id,profiles(full_name)');
+  const {data:overview,error:overviewError}=await sb.rpc('coach_parent_access_overview',{
+    p_team_id:state.team.id
+  });
+  if(overviewError)console.warn('Accès parents',overviewError);
+
   const counts={};
-  (links||[]).forEach(l=>counts[l.player_id]=(counts[l.player_id]||0)+1);
+  (overview||[]).forEach(x=>counts[x.player_id]=Number(x.access_count||0));
 
   $('#content').innerHTML=`
     <div class="section-head">
@@ -2811,13 +2844,16 @@ async function renderPlayers(){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Joueur</th><th>N°</th><th>Parents liés</th><th>Code parent</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Joueur</th><th>N°</th><th>Accès parents</th><th>Actions</th></tr></thead>
         <tbody>
           ${state.players.map(p=>`<tr>
             <td><strong>${esc(p.first_name)} ${esc(p.last_name||'')}</strong></td>
             <td>${p.number||'—'}</td>
-            <td>${counts[p.id]||0}</td>
-            <td><button class="btn ghost small" data-pin="${p.id}">Générer / remplacer</button></td>
+            <td>
+              <button class="btn ghost small" data-parent-access="${p.id}">
+                👤 ${counts[p.id]||1} accès
+              </button>
+            </td>
             <td>
               <div class="event-actions">
                 <button class="btn secondary small" data-edit-player="${p.id}">Modifier</button>
@@ -2831,7 +2867,7 @@ async function renderPlayers(){
 
   $('#addPlayer').onclick=()=>playerModal();
   $$('[data-edit-player]').forEach(b=>b.onclick=()=>playerModal(state.players.find(p=>p.id===b.dataset.editPlayer)));
-  $$('[data-pin]').forEach(b=>b.onclick=()=>generatePin(b.dataset.pin));
+  $$('[data-parent-access]').forEach(b=>b.onclick=()=>openParentAccessManager(b.dataset.parentAccess));
   $$('[data-disable]').forEach(b=>b.onclick=async()=>{
     if(!confirm('Désactiver ce joueur ?'))return;
     const {error}=await sb.from('players').update({active:false}).eq('id',b.dataset.disable);
@@ -2839,6 +2875,154 @@ async function renderPlayers(){
     await loadCore();
     await renderPlayers();
   });
+}
+
+async function openParentAccessManager(pid){
+  const player=state.players.find(p=>p.id===pid);
+  if(!player)return;
+
+  const {data,error}=await sb.rpc('list_player_parent_accesses',{p_player_id:pid});
+  if(error)return toast(error.message,false);
+
+  const accesses=data||[];
+
+  openModal(`
+    <h2>Accès parents · ${esc(player.first_name)}</h2>
+    <p class="muted">Chaque accès possède son propre code PIN, mais reste lié au même joueur. Les présences, sondages et informations sportives sont communes. La messagerie privée est séparée par accès.</p>
+
+    <div class="parent-access-list">
+      ${accesses.map(a=>`
+        <div class="parent-access-card ${a.is_primary?'primary-access':''}">
+          <div class="parent-access-main">
+            <strong>${esc(a.display_name)}</strong>
+            <span>${a.is_primary?'Accès principal existant':'Accès parent supplémentaire'}</span>
+            <small>${a.has_pin?'PIN configuré':'PIN non configuré'}${a.active?'':' · Désactivé'}</small>
+          </div>
+          <button class="btn ghost small" data-reset-parent-pin="${esc(a.identity_key)}" data-parent-label="${esc(a.display_name)}">Changer le PIN</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <button class="btn primary full" id="addParentAccess">+ Ajouter un accès parent</button>
+  `);
+
+  $$('[data-reset-parent-pin]').forEach(b=>b.onclick=()=>resetParentAccessPin(
+    b.dataset.resetParentPin,
+    b.dataset.parentLabel,
+    pid
+  ));
+  $('#addParentAccess').onclick=()=>addParentAccessModal(pid);
+}
+
+function addParentAccessModal(pid){
+  const player=state.players.find(p=>p.id===pid);
+  if(!player)return;
+
+  openModal(`
+    <h2>Nouvel accès parent · ${esc(player.first_name)}</h2>
+    <form id="newParentAccessForm" class="stack">
+      <label>Nom de l'accès
+        <input id="parentAccessLabel" required placeholder="Ex. Papa, Maman, Papa Jean…" />
+      </label>
+      <label>Code PIN à 6 chiffres
+        <input id="parentAccessPin" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="000000" />
+      </label>
+      <label>Confirmer le PIN
+        <input id="parentAccessPin2" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="000000" />
+      </label>
+      <div class="notice">
+        L'accès actuel de ${esc(player.first_name)} ne sera pas modifié. Ce nouveau parent disposera de son propre PIN et de sa propre conversation privée avec les coachs.
+      </div>
+      <button class="btn primary">Créer l'accès</button>
+    </form>
+  `);
+
+  $('#newParentAccessForm').onsubmit=async e=>{
+    e.preventDefault();
+    const label=$('#parentAccessLabel').value.trim();
+    const pin=$('#parentAccessPin').value.trim();
+    const pin2=$('#parentAccessPin2').value.trim();
+
+    if(!label)return toast("Indique un nom pour cet accès.",false);
+    if(!/^\d{6}$/.test(pin))return toast("Le PIN doit contenir exactement 6 chiffres.",false);
+    if(pin!==pin2)return toast("Les deux codes PIN ne correspondent pas.",false);
+
+    const btn=e.submitter;
+    setBusy(btn,true,'Création…');
+
+    const {data,error}=await sb.rpc('create_parent_access',{
+      p_player_id:pid,
+      p_label:label,
+      p_pin:pin
+    });
+
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+
+    await loadLoginIdentityOptions();
+
+    const displayName=data?.display_name||`${player.first_name} – ${label}`;
+    openModal(`
+      <h2>Accès créé ✓</h2>
+      <p><strong>${esc(displayName)}</strong></p>
+      <p>Transmets uniquement ce code au parent concerné :</p>
+      <div class="link-code">${esc(pin)}</div>
+      <div class="modal-actions">
+        <button class="btn secondary" id="copyNewParentPin">Copier le PIN</button>
+        <button class="btn primary" id="backToParentAccess">Terminer</button>
+      </div>
+    `);
+
+    $('#copyNewParentPin').onclick=async()=>{
+      try{
+        await navigator.clipboard.writeText(pin);
+        toast('PIN copié');
+      }catch(_){
+        toast("Impossible de copier automatiquement.",false);
+      }
+    };
+    $('#backToParentAccess').onclick=async()=>{
+      closeModal();
+      await renderPlayers();
+    };
+  };
+}
+
+function resetParentAccessPin(identityKey,displayName,pid){
+  openModal(`
+    <h2>Changer le PIN</h2>
+    <p><strong>${esc(displayName)}</strong></p>
+    <form id="resetParentPinForm" class="stack">
+      <label>Nouveau PIN à 6 chiffres
+        <input id="resetParentPin" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required />
+      </label>
+      <label>Confirmer le PIN
+        <input id="resetParentPin2" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required />
+      </label>
+      <div class="notice warning">L'ancien PIN cessera immédiatement de fonctionner. Les autres accès liés au même joueur ne seront pas modifiés.</div>
+      <button class="btn primary">Enregistrer le nouveau PIN</button>
+    </form>
+  `);
+
+  $('#resetParentPinForm').onsubmit=async e=>{
+    e.preventDefault();
+    const pin=$('#resetParentPin').value.trim();
+    const pin2=$('#resetParentPin2').value.trim();
+    if(!/^\d{6}$/.test(pin))return toast("Le PIN doit contenir exactement 6 chiffres.",false);
+    if(pin!==pin2)return toast("Les deux codes PIN ne correspondent pas.",false);
+
+    const btn=e.submitter;
+    setBusy(btn,true,'Enregistrement…');
+    const {error}=await sb.rpc('reset_parent_access_pin',{
+      p_identity_key:identityKey,
+      p_pin:pin
+    });
+    setBusy(btn,false);
+
+    if(error)return toast(error.message,false);
+    toast('PIN modifié');
+    await openParentAccessManager(pid);
+  };
 }
 
 function playerModal(player=null){
