@@ -134,6 +134,7 @@ const NAV_COACH = [
   ['evaluations','★','Évaluations'],
   ['messages','💬','Messages'],
   ['polls','📊','Sondages'],
+  ['communications','📣','Communication / événements'],
   ['lostfound','🧢','Objets trouvés'],
   ['settings','⚙','Paramètres']
 ];
@@ -143,6 +144,7 @@ const NAV_PARENT = [
   ['matches','⚽','Matchs'],
   ['contact','💬','Contacter les coachs'],
   ['polls','📊','Sondages'],
+  ['communications','📣','Communication / événements'],
   ['lostfound','🧢','Objets trouvés'],
   ['settings','⚙','Mon accès']
 ];
@@ -161,6 +163,7 @@ function pageMeta(page){
     evaluations:['Évaluations','Technique, jeu, athlétique, mental & attitude'],
     messages:['Messages','Conversations privées avec les parents'],
     polls:['Sondages','Créer des questions et suivre les réponses des parents'],
+    communications:['Communication / événements','Affiches et informations du club'],
     lostfound:['Objets trouvés','Photos des objets oubliés et réclamations'],
     settings:['Paramètres','Compte et accès à l’équipe']
   };
@@ -170,6 +173,7 @@ function pageMeta(page){
     matches:['Matchs','Liste des matchs U10 et composition'],
     contact:['Contacter les coachs','Conversation privée avec le staff U10'],
     polls:['Sondages','Répondez aux questions concernant votre enfant'],
+    communications:['Communication / événements','Affiches et informations du club'],
     lostfound:['Objets trouvés','Reconnaissez les affaires oubliées par votre enfant'],
     settings:['Mon accès','Accès parent et notifications']
   };
@@ -201,6 +205,7 @@ async function go(page){
   if(page==='messages' && isCoach()) await renderCoachMessages();
   if(page==='contact' && !isCoach()) await renderParentContact();
   if(page==='polls') await (isCoach()?renderCoachPolls():renderParentPolls());
+  if(page==='communications') await (isCoach()?renderCoachCommunications():renderParentCommunications());
   if(page==='lostfound') await (isCoach()?renderCoachLostFound():renderParentLostFound());
   if(page==='settings') await renderSettings();
 }
@@ -362,6 +367,8 @@ async function loadUser(user){
   }
 
   state.identity=identity;
+  state.communicationPopupStarted=false;
+  state.communicationPopupQueue=[];
 
   const {data:memberships,error}=await sb
     .from('team_members')
@@ -623,6 +630,266 @@ function parentEventCard(e){
 }
 
 
+
+// ============================================================
+// COMMUNICATION / ÉVÉNEMENTS DU CLUB
+// ============================================================
+
+async function addCommunicationPosterUrls(items){
+  await Promise.all((items||[]).map(async item=>{
+    if(!item.poster_path){
+      item.poster_url=null;
+      return;
+    }
+    const {data,error}=await sb.storage
+      .from('club-communications')
+      .createSignedUrl(item.poster_path,60*60);
+    if(error)console.warn('Affiche communication',error);
+    item.poster_url=data?.signedUrl||null;
+  }));
+  return items||[];
+}
+
+async function fetchClubCommunications(){
+  const {data,error}=await sb.from('club_communications')
+    .select('*')
+    .eq('team_id',state.team.id)
+    .order('created_at',{ascending:false});
+  if(error){
+    toast(error.message,false);
+    return [];
+  }
+  return await addCommunicationPosterUrls(data||[]);
+}
+
+function communicationCardHTML(item,{coach=false}={}){
+  return `<article class="communication-card">
+    <div class="communication-poster">
+      ${item.poster_url
+        ? `<img src="${item.poster_url}" alt="${esc(item.title||'Affiche du club')}" />`
+        : '<div class="communication-poster-missing">Affiche indisponible</div>'}
+    </div>
+    <div class="communication-card-body">
+      ${item.title?`<h3>${esc(item.title)}</h3>`:''}
+      ${item.info?`<div class="communication-info">${esc(item.info).replace(/\n/g,'<br>')}</div>`:''}
+      <small class="muted">Ajouté le ${fmtFullDate((item.created_at||'').slice(0,10))}</small>
+      ${coach?`
+        <div class="communication-actions">
+          <button class="btn danger small" data-delete-communication="${item.id}">Supprimer</button>
+        </div>`:''}
+    </div>
+  </article>`;
+}
+
+async function renderCoachCommunications(){
+  const items=await fetchClubCommunications();
+
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div>
+        <h3>Communication / événements</h3>
+        <span class="muted">Publiez une affiche : elle sera présentée automatiquement aux parents à leur prochaine ouverture de l'application.</span>
+      </div>
+      <button class="btn primary" id="addCommunication">+ Ajouter une affiche</button>
+    </div>
+
+    <div class="notice">
+      Les parents doivent cliquer sur <strong>“J'ai vu l'événement”</strong> pour ne plus revoir l'affiche au démarrage. Ils pourront toujours la retrouver dans leur onglet Communication / événements.
+    </div>
+
+    <div class="communication-grid">
+      ${items.length
+        ? items.map(item=>communicationCardHTML(item,{coach:true})).join('')
+        : '<div class="empty panel">Aucune communication publiée pour le moment.</div>'}
+    </div>`;
+
+  $('#addCommunication').onclick=communicationUploadModal;
+  $$('[data-delete-communication]').forEach(b=>b.onclick=()=>deleteCommunication(b.dataset.deleteCommunication));
+}
+
+function communicationUploadModal(){
+  openModal(`
+    <h2>Nouvelle communication</h2>
+    <form id="communicationForm" class="stack">
+      <label>Titre (optionnel)
+        <input id="communicationTitle" maxlength="120" placeholder="Ex. Souper du club, tournoi, Saint-Nicolas…" />
+      </label>
+      <label>Affiche
+        <input id="communicationPoster" type="file" accept="image/*" required />
+      </label>
+      <label>Informations complémentaires (optionnel)
+        <textarea id="communicationInfo" rows="5" placeholder="Ajoutez uniquement ce qui doit apparaître sous l'affiche…"></textarea>
+      </label>
+      <div class="notice">
+        Si vous ne mettez aucune information complémentaire, aucun bloc de texte ne sera affiché sous l'affiche chez les parents.
+      </div>
+      <button class="btn primary" type="submit">Publier l'affiche</button>
+    </form>
+  `);
+
+  $('#communicationForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=e.submitter;
+    const file=$('#communicationPoster').files?.[0];
+    if(!file)return toast('Ajoutez une affiche.',false);
+
+    if(file.size>20*1024*1024){
+      return toast("L'affiche dépasse 20 Mo.",false);
+    }
+
+    setBusy(btn,true,'Publication…');
+
+    const safe=(file.name||'affiche.jpg').replace(/[^a-zA-Z0-9._-]+/g,'-');
+    const path=`${state.team.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
+
+    const {error:uploadError}=await sb.storage.from('club-communications').upload(path,file,{
+      upsert:false,
+      contentType:file.type||'image/jpeg'
+    });
+
+    if(uploadError){
+      setBusy(btn,false);
+      return toast(`Envoi de l'affiche impossible : ${uploadError.message}`,false);
+    }
+
+    const title=$('#communicationTitle').value.trim()||null;
+    const info=$('#communicationInfo').value.trim()||null;
+
+    const {error:insertError}=await sb.from('club_communications').insert({
+      team_id:state.team.id,
+      title,
+      info,
+      poster_path:path,
+      created_by:state.user.id
+    });
+
+    if(insertError){
+      await sb.storage.from('club-communications').remove([path]).catch(()=>{});
+      setBusy(btn,false);
+      return toast(insertError.message,false);
+    }
+
+    setBusy(btn,false);
+    closeModal();
+    toast('Affiche publiée');
+    await renderCoachCommunications();
+  };
+}
+
+async function deleteCommunication(id){
+  const {data:item,error:readError}=await sb.from('club_communications')
+    .select('id,poster_path,title')
+    .eq('id',id)
+    .eq('team_id',state.team.id)
+    .maybeSingle();
+
+  if(readError)return toast(readError.message,false);
+  if(!item)return;
+
+  if(!confirm(`Supprimer définitivement ${item.title?`“${item.title}”`:"cette affiche"} ?`))return;
+
+  const {error}=await sb.from('club_communications')
+    .delete()
+    .eq('id',id)
+    .eq('team_id',state.team.id);
+
+  if(error)return toast(error.message,false);
+
+  if(item.poster_path){
+    await sb.storage.from('club-communications').remove([item.poster_path]).catch(()=>{});
+  }
+
+  toast('Communication supprimée');
+  await renderCoachCommunications();
+}
+
+async function renderParentCommunications(){
+  const items=await fetchClubCommunications();
+
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div>
+        <h3>Communication / événements</h3>
+        <span class="muted">Retrouvez ici toutes les affiches et informations publiées par les coachs.</span>
+      </div>
+    </div>
+
+    <div class="communication-grid parent-communication-grid">
+      ${items.length
+        ? items.map(item=>communicationCardHTML(item)).join('')
+        : '<div class="empty panel">Aucune communication du club pour le moment.</div>'}
+    </div>`;
+}
+
+async function fetchUnseenParentCommunications(){
+  const {data,error}=await sb.rpc('parent_unseen_communications',{
+    p_team_id:state.team.id
+  });
+
+  if(error){
+    console.warn('Nouvelles communications',error);
+    return [];
+  }
+
+  // La RPC renvoie les plus anciennes non vues en premier pour que,
+  // s'il y en a plusieurs, elles apparaissent dans leur ordre de publication.
+  return await addCommunicationPosterUrls(data||[]);
+}
+
+async function startParentCommunicationPopupFlow(){
+  if(isCoach() || !state.identity?.identity_key)return;
+
+  const items=await fetchUnseenParentCommunications();
+  state.communicationPopupQueue=items||[];
+  showNextParentCommunicationPopup();
+}
+
+function showNextParentCommunicationPopup(){
+  const item=state.communicationPopupQueue?.shift();
+  if(!item){
+    closeModal();
+    return;
+  }
+
+  openModal(`
+    <div class="communication-popup">
+      <div class="communication-popup-kicker">📣 COMMUNICATION DU CLUB</div>
+      ${item.title?`<h2>${esc(item.title)}</h2>`:''}
+      <div class="communication-popup-poster">
+        ${item.poster_url
+          ? `<img src="${item.poster_url}" alt="${esc(item.title||'Affiche du club')}" />`
+          : '<div class="communication-poster-missing">Affiche indisponible</div>'}
+      </div>
+      ${item.info?`<div class="communication-popup-info">${esc(item.info).replace(/\n/g,'<br>')}</div>`:''}
+      <button class="btn primary full communication-seen-btn" id="communicationSeenBtn">
+        ✓ J'ai vu l'événement
+      </button>
+      ${state.communicationPopupQueue.length
+        ? `<small class="communication-popup-next">${state.communicationPopupQueue.length} autre${state.communicationPopupQueue.length>1?'s':''} communication${state.communicationPopupQueue.length>1?'s':''} à voir ensuite</small>`
+        : ''}
+    </div>
+  `);
+
+  $('#communicationSeenBtn').onclick=async()=>{
+    const btn=$('#communicationSeenBtn');
+    setBusy(btn,true,'Enregistrement…');
+
+    const {error}=await sb.rpc('mark_communication_seen',{
+      p_communication_id:item.id
+    });
+
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+
+    if(state.communicationPopupQueue.length){
+      showNextParentCommunicationPopup();
+    }else{
+      closeModal();
+      toast("Communication enregistrée comme vue");
+    }
+  };
+}
+
 async function fetchUnclaimedLostFoundItems(limit=4){
   const {data,error}=await sb.from('lost_found_items')
     .select('*')
@@ -717,6 +984,13 @@ async function renderParentHome(){
         <button class="btn primary" id="homePolls">Répondre</button>
       </div>`;
     $('#homePolls').onclick=()=>go('polls');
+  }
+
+  // À chaque ouverture de l'application côté parent, affiche les nouvelles
+  // communications une par une, sans interrompre les ouvertures suivantes.
+  if(!state.communicationPopupStarted){
+    state.communicationPopupStarted=true;
+    setTimeout(()=>startParentCommunicationPopupFlow(),250);
   }
 }
 

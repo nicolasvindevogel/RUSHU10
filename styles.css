@@ -1793,3 +1793,100 @@ body{
     flex-direction:column;
   }
 }
+
+
+/* === v43 Communication / événements === */
+.communication-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:16px;
+}
+.communication-card{
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:18px;
+  background:rgba(255,255,255,.035);
+}
+.communication-poster{
+  background:#07130c;
+  min-height:180px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.communication-poster img{
+  width:100%;
+  max-height:620px;
+  object-fit:contain;
+  display:block;
+}
+.communication-poster-missing{
+  padding:40px 18px;
+  color:var(--muted);
+  text-align:center;
+}
+.communication-card-body{
+  display:grid;
+  gap:10px;
+  padding:14px;
+}
+.communication-card-body h3{
+  margin:0;
+}
+.communication-info,
+.communication-popup-info{
+  line-height:1.5;
+  white-space:normal;
+}
+.communication-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  margin-top:4px;
+}
+.communication-popup{
+  display:grid;
+  gap:14px;
+}
+.communication-popup-kicker{
+  color:#79e99a;
+  font-size:.78rem;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.communication-popup h2{
+  margin:0;
+}
+.communication-popup-poster{
+  overflow:hidden;
+  border-radius:16px;
+  background:#07130c;
+  border:1px solid rgba(255,255,255,.08);
+}
+.communication-popup-poster img{
+  width:100%;
+  max-height:68vh;
+  object-fit:contain;
+  display:block;
+}
+.communication-popup-info{
+  padding:12px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.08);
+}
+.communication-seen-btn{
+  min-height:48px;
+}
+.communication-popup-next{
+  color:var(--muted);
+  text-align:center;
+}
+@media(max-width:600px){
+  .communication-grid{
+    grid-template-columns:1fr;
+  }
+  .communication-popup-poster img{
+    max-height:60vh;
+  }
+}

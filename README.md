@@ -576,3 +576,25 @@ Depuis **Coachs > Joueurs > Accès parents** :
 
 ### Compatibilité
 Le script conserve les identités, PIN et conversations existants. L'accès historique de chaque joueur est marqué comme **accès principal** et reste fonctionnel.
+
+
+## v43 — Communication / événements
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_COMMUNICATION_EVENEMENTS_V43.sql`
+
+### Côté coach
+Un nouvel onglet **Communication / événements** permet de :
+- publier une affiche au format image ;
+- ajouter éventuellement un titre ;
+- ajouter éventuellement des informations complémentaires ;
+- supprimer une communication devenue inutile.
+
+### Côté parent
+- à la prochaine ouverture de l'application, toute nouvelle affiche non encore vue s'ouvre automatiquement en premier plan ;
+- l'affiche est affichée en grand ;
+- les informations complémentaires ne sont affichées que si le coach en a encodé ;
+- le parent clique sur **J'ai vu l'événement** pour confirmer la lecture et ne plus avoir cette affiche au démarrage ;
+- si plusieurs nouvelles communications sont en attente, elles apparaissent **l'une après l'autre** ;
+- toutes les affiches restent consultables ensuite dans l'onglet **Communication / événements**.
+
+### Multi-accès parents
+L'accusé de lecture est enregistré **par accès parent**. Par exemple, si Amadeo possède un accès Maman et un accès Papa, chacun doit voir et confirmer la communication de son côté.
