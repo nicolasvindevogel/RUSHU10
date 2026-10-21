@@ -135,6 +135,7 @@ const NAV_COACH = [
   ['messages','💬','Messages'],
   ['polls','📊','Sondages'],
   ['communications','📣','Communication / événements'],
+  ['pasta','🍝','Repas Pasta'],
   ['lostfound','🧢','Objets trouvés'],
   ['settings','⚙','Paramètres']
 ];
@@ -145,6 +146,7 @@ const NAV_PARENT = [
   ['contact','💬','Contacter les coachs'],
   ['polls','📊','Sondages'],
   ['communications','📣','Communication / événements'],
+  ['pasta','🍝','Repas Pasta'],
   ['lostfound','🧢','Objets trouvés'],
   ['settings','⚙','Mon accès']
 ];
@@ -164,6 +166,7 @@ function pageMeta(page){
     messages:['Messages','Conversations privées avec les parents'],
     polls:['Sondages','Créer des questions et suivre les réponses des parents'],
     communications:['Communication / événements','Affiches et informations du club'],
+    pasta:['Repas Pasta','Réservations de l’équipe et suivi des paiements'],
     lostfound:['Objets trouvés','Photos des objets oubliés et réclamations'],
     settings:['Paramètres','Compte et accès à l’équipe']
   };
@@ -174,6 +177,7 @@ function pageMeta(page){
     contact:['Contacter les coachs','Conversation privée avec le staff U10'],
     polls:['Sondages','Répondez aux questions concernant votre enfant'],
     communications:['Communication / événements','Affiches et informations du club'],
+    pasta:['Repas Pasta','Réserver les repas de votre famille'],
     lostfound:['Objets trouvés','Reconnaissez les affaires oubliées par votre enfant'],
     settings:['Mon accès','Accès parent et notifications']
   };
@@ -206,6 +210,7 @@ async function go(page){
   if(page==='contact' && !isCoach()) await renderParentContact();
   if(page==='polls') await (isCoach()?renderCoachPolls():renderParentPolls());
   if(page==='communications') await (isCoach()?renderCoachCommunications():renderParentCommunications());
+  if(page==='pasta') await (isCoach()?renderCoachPasta():renderParentPasta());
   if(page==='lostfound') await (isCoach()?renderCoachLostFound():renderParentLostFound());
   if(page==='settings') await renderSettings();
 }
@@ -604,6 +609,38 @@ $('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
 function eventTypePill(type){ const x={training:['green','Entraînement'],match:['blue','Match'],tournament:['orange','Tournoi'],other:['gray','Événement du club']}[type]||['gray',type]; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
 function statusPill(s){ const m={present:['green','Présent'],absent:['red','Absent'],maybe:['orange','Incertain'],excused:['orange','Excusé'],late:['orange','Retard']}; const x=m[s]||['gray','Pas de réponse']; return `<span class="pill ${x[0]}">${x[1]}</span>`; }
 
+
+const PASTA_CONFIG = {
+  eventDate:'2026-11-14',
+  eventTime:'18:00',
+  venue:'Salle de l’ICET Herseaux',
+  parentDeadline:'2026-11-09T23:59:59+01:00',
+  officialDeadline:'2026-11-12',
+  iban:'BE08 2750 5149 4113',
+  adultPrice:15,
+  childPrice:13
+};
+
+const eur = value => new Intl.NumberFormat('fr-BE',{style:'currency',currency:'EUR'}).format(Number(value||0));
+function pastaTotal(r={}){
+  return (Number(r.pasta_adult||0)+Number(r.english_adult||0))*PASTA_CONFIG.adultPrice
+    +(Number(r.pasta_child||0)+Number(r.english_child||0))*PASTA_CONFIG.childPrice;
+}
+function pastaMealCount(r={}){
+  return Number(r.pasta_adult||0)+Number(r.pasta_child||0)+Number(r.english_adult||0)+Number(r.english_child||0)+Number(r.player_meal||0);
+}
+function pastaPaymentState(r){
+  if(!r)return '<span class="pill gray">Pas de réservation</span>';
+  if(r.payment_verified_at)return '<span class="pill green">Paiement vérifié</span>';
+  if(r.parent_paid_at)return '<span class="pill orange">Virement annoncé</span>';
+  return '<span class="pill red">En attente de paiement</span>';
+}
+function pastaParentOpen(){ return Date.now() <= new Date(PASTA_CONFIG.parentDeadline).getTime(); }
+function pastaCommunication(player){
+  const full=[player?.last_name,player?.first_name].filter(Boolean).join(' ');
+  return `${full||player?.first_name||'Joueur'} + Pasta + U10`;
+}
+
 function parentWeekMonday(){
   const now=new Date();
   const day=now.getDay(); // 0 = dimanche
@@ -630,6 +667,323 @@ function parentEventCard(e){
 }
 
 
+
+
+// ============================================================
+// REPAS PASTA 2026
+// ============================================================
+
+async function getParentPastaReservation(){
+  const {data,error}=await sb.rpc('parent_get_pasta_reservation',{p_team_id:state.team.id});
+  if(error){ console.warn('Réservation Pasta',error); return null; }
+  return Array.isArray(data)?(data[0]||null):data;
+}
+
+function pastaOrderLines(r){
+  return [
+    ['Pastas adulte',Number(r?.pasta_adult||0),PASTA_CONFIG.adultPrice],
+    ['Pastas enfant',Number(r?.pasta_child||0),PASTA_CONFIG.childPrice],
+    ['Assiette anglaise adulte',Number(r?.english_adult||0),PASTA_CONFIG.adultPrice],
+    ['Assiette anglaise enfant',Number(r?.english_child||0),PASTA_CONFIG.childPrice],
+    ['Repas joueur (offert)',Number(r?.player_meal||0),0]
+  ];
+}
+
+function parentPastaReminderHTML(r){
+  const deadline='9 novembre';
+  if(!r){
+    if(!pastaParentOpen())return '';
+    return `<section class="pasta-home-reminder pasta-home-reserve">
+      <div><small>🍝 REPAS PASTA · 14 NOVEMBRE</small><strong>Réservation à compléter</strong><span>Réservez les repas de votre famille avant le ${deadline}.</span></div>
+      <button class="btn primary small" data-open-pasta>Réserver</button>
+    </section>`;
+  }
+  // Dès que le parent a confirmé son virement, le rappel disparaît de l'accueil.
+  // Le contrôle du trésorier reste visible dans le module et côté coach.
+  if(r.parent_paid_at)return '';
+  return `<section class="pasta-home-reminder pasta-home-payment">
+    <div><small>🍝 REPAS PASTA</small><strong>Réservation en attente de paiement</strong><span>Virement de <b>${eur(pastaTotal(r))}</b> à effectuer.</span></div>
+    <button class="btn primary small" data-open-pasta>Payer / détails</button>
+  </section>`;
+}
+
+async function renderParentPasta(){
+  const player=state.players.find(p=>p.id===state.parentPlayerId);
+  if(!player){
+    $('#content').innerHTML='<div class="notice warning">Aucun joueur lié à cet accès.</div>';
+    return;
+  }
+
+  const r=await getParentPastaReservation();
+  const editable=pastaParentOpen();
+  const comm=pastaCommunication(player);
+  const q=r||{pasta_adult:0,pasta_child:0,english_adult:0,english_child:0,player_meal:1};
+
+  $('#content').innerHTML=`
+    <div class="pasta-hero">
+      <div><small>SOUPER « PASTAS » · RUS HERSEAUX</small><h2>Samedi 14 novembre 2026</h2><p>À partir de 18h · Salle de l’ICET Herseaux</p></div>
+      ${r?pastaPaymentState(r):'<span class="pill orange">À réserver</span>'}
+    </div>
+
+    <div class="notice ${editable?'':'warning'}">
+      ${editable
+        ? '<strong>Réservation équipe jusqu’au lundi 9 novembre à 23h59.</strong> Nous regrouperons ensuite toutes les commandes U10 pour remettre un seul bon au club.'
+        : '<strong>Les réservations parents sont clôturées.</strong> Contactez un coach si une correction est encore nécessaire.'}
+    </div>
+
+    <div class="pasta-layout">
+      <div class="panel pasta-order-panel">
+        <div class="section-head"><div><h3>Commande pour ${esc(player.first_name)}</h3><span class="muted">Indiquez le nombre de repas souhaités.</span></div></div>
+        <div class="pasta-qty-list">
+          ${[
+            ['pasta_adult','Pastas adulte','Bolognaise · Carbonara · 4 fromages',15],
+            ['pasta_child','Pastas enfant','Bolognaise · Carbonara · 4 fromages',13],
+            ['english_adult','Assiette anglaise adulte','',15],
+            ['english_child','Assiette anglaise enfant','',13]
+          ].map(([key,label,sub,price])=>`<div class="pasta-qty-row">
+            <div><strong>${label}</strong>${sub?`<small>${sub}</small>`:''}<span>${eur(price)}</span></div>
+            <input type="number" min="0" max="20" step="1" data-pasta-qty="${key}" value="${Number(q[key]||0)}" ${editable?'':'disabled'} />
+          </div>`).join('')}
+
+          <div class="pasta-player-meal">
+            <label><input type="checkbox" id="pastaPlayerMeal" ${Number(q.player_meal||0)?'checked':''} ${editable?'':'disabled'} />
+              <span><strong>Repas joueur (offert)</strong><small>0 ou 1 · 0,00 €</small></span>
+            </label>
+          </div>
+        </div>
+        ${editable?'<button class="btn primary full" id="reviewPastaOrder">Vérifier ma commande</button>':''}
+      </div>
+
+      ${r?`<div class="panel pasta-payment-panel">
+        <h3>Paiement</h3>
+        <div class="pasta-payment-status">${pastaPaymentState(r)}</div>
+        <div class="pasta-bank-box">
+          <small>MONTANT</small><strong>${eur(pastaTotal(r))}</strong>
+          <small>COMPTE RUS HERSEAUTOISE</small><strong>${PASTA_CONFIG.iban}</strong>
+          <small>COMMUNICATION</small><strong>${esc(comm)}</strong>
+        </div>
+        ${!r.parent_paid_at?`<button class="btn primary full" id="declarePastaPaid">J’ai payé par virement</button>`:''}
+        ${r.parent_paid_at&&!r.payment_verified_at?'<p class="muted center">Votre virement est annoncé. Le statut passera à “Paiement vérifié” après contrôle par le trésorier.</p>':''}
+        ${r.payment_verified_at?'<div class="notice"><strong>✓ Paiement vérifié par l’équipe.</strong></div>':''}
+      </div>`:''}
+    </div>`;
+
+  $('#reviewPastaOrder')?.addEventListener('click',()=>reviewParentPastaOrder(player,r));
+  $('#declarePastaPaid')?.addEventListener('click',()=>declareParentPastaPaid());
+}
+
+function collectPastaForm(){
+  const o={};
+  $$('[data-pasta-qty]').forEach(inp=>o[inp.dataset.pastaQty]=Math.max(0,Math.min(20,parseInt(inp.value||'0',10)||0)));
+  o.player_meal=$('#pastaPlayerMeal')?.checked?1:0;
+  return o;
+}
+
+function reviewParentPastaOrder(player,current){
+  const order=collectPastaForm();
+  const paidCount=Number(order.pasta_adult)+Number(order.pasta_child)+Number(order.english_adult)+Number(order.english_child);
+  if(paidCount===0 && !order.player_meal)return toast('Ajoutez au moins un repas.',false);
+  const total=pastaTotal(order);
+  const comm=pastaCommunication(player);
+
+  openModal(`
+    <h2>Récapitulatif de votre commande</h2>
+    <div class="pasta-recap-lines">
+      ${pastaOrderLines(order).filter(x=>x[1]>0).map(([label,qty,price])=>`<div><span>${esc(label)} × ${qty}</span><strong>${eur(qty*price)}</strong></div>`).join('')}
+      <div class="pasta-recap-total"><span>${pastaMealCount(order)} repas au total</span><strong>${eur(total)}</strong></div>
+    </div>
+    <div class="pasta-bank-box">
+      <small>VIREMENT À EFFECTUER SUR</small><strong>${PASTA_CONFIG.iban}</strong>
+      <small>COMMUNICATION</small><strong>${esc(comm)}</strong>
+    </div>
+    ${current?.parent_paid_at?'<div class="notice warning">Attention : modifier une commande déjà annoncée comme payée remettra le paiement en attente de vérification.</div>':''}
+    <div class="modal-actions">
+      <button class="btn ghost" id="backPastaOrder">Retour</button>
+      <button class="btn primary" id="confirmPastaOrder">Confirmer la réservation</button>
+    </div>`);
+
+  $('#backPastaOrder').onclick=closeModal;
+  $('#confirmPastaOrder').onclick=async()=>{
+    const btn=$('#confirmPastaOrder'); setBusy(btn,true,'Enregistrement…');
+    const {error}=await sb.rpc('parent_save_pasta_reservation',{
+      p_team_id:state.team.id,
+      p_pasta_adult:order.pasta_adult,
+      p_pasta_child:order.pasta_child,
+      p_english_adult:order.english_adult,
+      p_english_child:order.english_child,
+      p_player_meal:order.player_meal
+    });
+    setBusy(btn,false);
+    if(error)return toast(error.message,false);
+    closeModal(); toast('Réservation enregistrée'); await renderParentPasta();
+  };
+}
+
+async function declareParentPastaPaid(){
+  if(!confirm('Confirmer que vous avez bien effectué le virement ?'))return;
+  const btn=$('#declarePastaPaid'); setBusy(btn,true,'Confirmation…');
+  const {error}=await sb.rpc('parent_declare_pasta_paid',{p_team_id:state.team.id});
+  setBusy(btn,false);
+  if(error)return toast(error.message,false);
+  toast('Virement déclaré'); await renderParentPasta();
+}
+
+async function getCoachPastaOverview(){
+  const {data,error}=await sb.rpc('coach_pasta_overview',{p_team_id:state.team.id});
+  if(error){toast(error.message,false);return []}
+  return data||[];
+}
+
+function coachPastaTotals(rows){
+  const reserved=rows.filter(r=>r.reservation_id);
+  return reserved.reduce((t,r)=>{
+    for(const k of ['pasta_adult','pasta_child','english_adult','english_child','player_meal'])t[k]+=Number(r[k]||0);
+    t.amount+=Number(r.total_amount||0);
+    t.meals+=Number(r.total_meals||0);
+    if(r.parent_paid_at)t.declared++;
+    if(r.payment_verified_at){t.verified++;t.verifiedAmount+=Number(r.total_amount||0)}
+    return t;
+  },{pasta_adult:0,pasta_child:0,english_adult:0,english_child:0,player_meal:0,amount:0,meals:0,declared:0,verified:0,verifiedAmount:0});
+}
+
+async function renderCoachPasta(){
+  const rows=await getCoachPastaOverview();
+  const booked=rows.filter(r=>r.reservation_id);
+  const totals=coachPastaTotals(rows);
+  const unpaid=booked.filter(r=>!r.parent_paid_at).length;
+  const toVerify=booked.filter(r=>r.parent_paid_at&&!r.payment_verified_at).length;
+
+  $('#content').innerHTML=`
+    <div class="section-head">
+      <div><h3>Réservations Pasta U10</h3><span class="muted">Bon collectif à remettre au club au plus tard le 12 novembre.</span></div>
+      <button class="btn secondary" id="exportPastaPdf">📄 Exporter le récap PDF</button>
+    </div>
+
+    <div class="pasta-coach-stats cards">
+      <div class="stat"><div class="label">Réservations</div><div class="value">${booked.length}</div></div>
+      <div class="stat"><div class="label">Repas</div><div class="value">${totals.meals}</div></div>
+      <div class="stat"><div class="label">Total attendu</div><div class="value pasta-stat-money">${eur(totals.amount)}</div></div>
+      <div class="stat"><div class="label">À vérifier</div><div class="value">${toVerify}</div></div>
+    </div>
+
+    <div class="panel pasta-club-form-summary">
+      <div class="section-head"><div><h3>Totaux à reporter sur le bon du club</h3><span class="muted">Équipe : U10 Herseaux</span></div></div>
+      <div class="pasta-summary-grid">
+        <div><span>Pastas adulte</span><strong>${totals.pasta_adult}</strong></div>
+        <div><span>Pastas enfant</span><strong>${totals.pasta_child}</strong></div>
+        <div><span>Assiette anglaise adulte</span><strong>${totals.english_adult}</strong></div>
+        <div><span>Assiette anglaise enfant</span><strong>${totals.english_child}</strong></div>
+        <div><span>Repas joueur (offert)</span><strong>${totals.player_meal}</strong></div>
+        <div class="grand"><span>TOTAL REPAS</span><strong>${totals.meals}</strong></div>
+        <div class="grand"><span>TOTAL €</span><strong>${eur(totals.amount)}</strong></div>
+      </div>
+    </div>
+
+    <div class="pasta-payment-overview">
+      <span class="pill red">${unpaid} en attente de paiement</span>
+      <span class="pill orange">${toVerify} virements à vérifier</span>
+      <span class="pill green">${totals.verified} paiements vérifiés</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="pasta-coach-table">
+        <thead><tr><th>Joueur</th><th>Commande</th><th>Total</th><th>Paiement</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.map(r=>`<tr>
+            <td><strong>${esc(r.first_name)} ${esc(r.last_name||'')}</strong></td>
+            <td>${r.reservation_id?`${Number(r.total_meals||0)} repas`:'<span class="muted">Pas de réservation</span>'}</td>
+            <td>${r.reservation_id?eur(r.total_amount):'—'}</td>
+            <td>${r.reservation_id?pastaPaymentState(r):'—'}</td>
+            <td><div class="event-actions">
+              <button class="btn ghost small" data-edit-pasta="${r.player_id}">${r.reservation_id?'Modifier':'Créer'}</button>
+              ${r.reservation_id&&r.parent_paid_at&&!r.payment_verified_at?`<button class="btn primary small" data-verify-pasta="${r.player_id}">✓ Vérifier</button>`:''}
+              ${r.reservation_id&&r.payment_verified_at?`<button class="btn secondary small" data-unverify-pasta="${r.player_id}">Annuler vérif.</button>`:''}
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  $$('[data-edit-pasta]').forEach(b=>b.onclick=()=>coachPastaEditModal(rows.find(r=>r.player_id===b.dataset.editPasta)));
+  $$('[data-verify-pasta]').forEach(b=>b.onclick=()=>setCoachPastaVerified(b.dataset.verifyPasta,true));
+  $$('[data-unverify-pasta]').forEach(b=>b.onclick=()=>setCoachPastaVerified(b.dataset.unverifyPasta,false));
+  $('#exportPastaPdf').onclick=()=>exportPastaPdf(rows);
+}
+
+function coachPastaEditModal(r){
+  const q=r?.reservation_id?r:{pasta_adult:0,pasta_child:0,english_adult:0,english_child:0,player_meal:1};
+  openModal(`
+    <h2>Commande · ${esc(r.first_name)}</h2>
+    <div class="pasta-qty-list coach-edit-pasta">
+      ${[
+        ['pasta_adult','Pastas adulte',15],['pasta_child','Pastas enfant',13],['english_adult','Assiette anglaise adulte',15],['english_child','Assiette anglaise enfant',13]
+      ].map(([k,l,p])=>`<div class="pasta-qty-row"><div><strong>${l}</strong><span>${eur(p)}</span></div><input type="number" min="0" max="20" data-coach-pasta="${k}" value="${Number(q[k]||0)}" /></div>`).join('')}
+      <div class="pasta-player-meal"><label><input type="checkbox" id="coachPlayerMeal" ${Number(q.player_meal||0)?'checked':''}/><span><strong>Repas joueur (offert)</strong><small>0 ou 1 · 0,00 €</small></span></label></div>
+    </div>
+    <div class="notice warning">Toute modification des quantités remet le paiement en statut à contrôler afin d'éviter de valider un ancien montant.</div>
+    <button class="btn primary full" id="saveCoachPasta">Enregistrer la commande</button>`);
+
+  $('#saveCoachPasta').onclick=async()=>{
+    const vals={}; $$('[data-coach-pasta]').forEach(i=>vals[i.dataset.coachPasta]=Math.max(0,parseInt(i.value||0,10)||0));
+    vals.player_meal=$('#coachPlayerMeal').checked?1:0;
+    const btn=$('#saveCoachPasta');setBusy(btn,true);
+    const {error}=await sb.rpc('coach_save_pasta_reservation',{
+      p_player_id:r.player_id,
+      p_pasta_adult:vals.pasta_adult,
+      p_pasta_child:vals.pasta_child,
+      p_english_adult:vals.english_adult,
+      p_english_child:vals.english_child,
+      p_player_meal:vals.player_meal
+    });
+    setBusy(btn,false); if(error)return toast(error.message,false);
+    closeModal();toast('Commande mise à jour');await renderCoachPasta();
+  };
+}
+
+async function setCoachPastaVerified(playerId,verified){
+  const {error}=await sb.rpc('coach_set_pasta_payment_verified',{p_player_id:playerId,p_verified:verified});
+  if(error)return toast(error.message,false);
+  toast(verified?'Paiement vérifié':'Vérification annulée'); await renderCoachPasta();
+}
+
+function exportPastaPdf(rows){
+  const booked=rows.filter(r=>r.reservation_id);
+  const totals=coachPastaTotals(rows);
+  const generated=new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date());
+  const paymentLabel=r=>r.payment_verified_at?'VERIFIE':r.parent_paid_at?'VIREMENT ANNONCE':'EN ATTENTE';
+  const logoUrl=new URL('./logo.png',window.location.href).href;
+  const detailRows=booked.map(r=>`<tr>
+      <td class="player">${esc(`${r.first_name} ${r.last_name||''}`.trim())}</td>
+      <td>${Number(r.pasta_adult||0)}</td><td>${Number(r.pasta_child||0)}</td>
+      <td>${Number(r.english_adult||0)}</td><td>${Number(r.english_child||0)}</td>
+      <td>${Number(r.player_meal||0)}</td><td class="strong">${Number(r.total_meals||0)}</td>
+      <td class="money">${eur(r.total_amount)}</td>
+      <td class="status ${r.payment_verified_at?'ok':r.parent_paid_at?'pending':'late'}">${paymentLabel(r)}</td>
+    </tr>`).join('');
+  const unpaid=booked.filter(r=>!r.parent_paid_at).length;
+  const announced=booked.filter(r=>r.parent_paid_at&&!r.payment_verified_at).length;
+  const verified=booked.filter(r=>r.payment_verified_at).length;
+  const w=window.open('','_blank');
+  if(!w)return toast("Le navigateur bloque l'ouverture du PDF. Autorisez les fenêtres contextuelles pour cette application.",false);
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>U10 Herseaux - Récapitulatif Repas Pasta</title><style>
+  @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#142019;background:#fff;font-size:10px}.report{max-width:100%;margin:0 auto}
+  .header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 0 12px;border-bottom:3px solid #1cab52}.brand{display:flex;align-items:center;gap:14px}.brand img{width:72px;height:72px;object-fit:contain}.brand h1{margin:0;font-size:23px;line-height:1.05;color:#138641}.brand p{margin:6px 0 0;font-size:11px;color:#54645b}.meta{text-align:right;line-height:1.5;color:#54645b}.meta strong{display:block;color:#142019;font-size:12px}
+  .event{display:grid;grid-template-columns:1.3fr .7fr;gap:12px;margin:14px 0 12px}.event-card,.payment-card{border:1px solid #d7dfda;border-radius:10px;padding:11px 13px}.event-card h2{margin:0 0 6px;font-size:16px}.event-card p,.payment-card p{margin:3px 0}.payment-card{background:#f5faf7}.payment-card strong{font-size:13px;color:#138641}
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin:0 0 12px}.stat{border:1px solid #d7dfda;border-radius:9px;padding:8px;text-align:center;background:#fbfcfb}.stat span{display:block;color:#627067;font-size:8.5px;text-transform:uppercase}.stat strong{display:block;margin-top:3px;font-size:15px}.stat.total{background:#eaf7ef;border-color:#9cd9b2}
+  .section-title{display:flex;justify-content:space-between;align-items:end;margin:13px 0 6px}.section-title h2{margin:0;font-size:14px}.section-title span{color:#68766d}table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}th{background:#143d26;color:#fff;padding:6px 4px;border:1px solid #143d26;font-size:8px;text-align:center}td{padding:5px 4px;border:1px solid #d8dfda;text-align:center;font-size:8.4px;vertical-align:middle}tbody tr:nth-child(even){background:#f8faf9}td.player{text-align:left;font-weight:700;width:16%}td.strong{font-weight:800}td.money{font-weight:800;white-space:nowrap}td.status{font-weight:800;font-size:7.5px}td.status.ok{color:#08783a;background:#ebf8f0}td.status.pending{color:#996100;background:#fff6df}td.status.late{color:#b32b2b;background:#fff0f0}.totals-row td{font-weight:900;background:#eaf7ef;border-top:2px solid #1cab52}
+  .footer{display:flex;justify-content:space-between;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid #d7dfda;color:#6a776f;font-size:8px}.notes{margin-top:9px;padding:8px 10px;border-left:4px solid #1cab52;background:#f5faf7;font-size:8.5px;line-height:1.4}.print-actions{position:fixed;right:16px;bottom:16px;display:flex;gap:8px;padding:8px;background:#fff;border:1px solid #d7dfda;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.14)}.print-actions button{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}.print-actions .primary{background:#1cab52;color:#fff}.print-actions .secondary{background:#edf1ee;color:#142019}@media print{.print-actions{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body><div class="report">
+  <header class="header"><div class="brand"><img src="${logoUrl}" alt="Logo RUS Herseaux"><div><h1>U10 HERSEAUX</h1><p>Récapitulatif des réservations - Souper Pastas 2026</p></div></div><div class="meta"><strong>Royale Union Sportive Herseautoise</strong>Généré le ${generated}<br>Équipe : U10 Herseaux</div></header>
+  <section class="event"><div class="event-card"><h2>Souper « Pastas »</h2><p><strong>Samedi 14 novembre 2026 à partir de 18h</strong></p><p>Salle de l'ICET Herseaux - à proximité immédiate du club.</p><p>Bon collectif à remettre au club au plus tard le 12 novembre 2026.</p></div><div class="payment-card"><p>Compte du club</p><strong>BE08 2750 5149 4113</strong><p>Suivi trésorier : ${verified} vérifié(s) · ${announced} annoncé(s) · ${unpaid} en attente</p></div></section>
+  <div class="stats"><div class="stat"><span>Pastas adulte</span><strong>${totals.pasta_adult}</strong></div><div class="stat"><span>Pastas enfant</span><strong>${totals.pasta_child}</strong></div><div class="stat"><span>Assiette angl. adulte</span><strong>${totals.english_adult}</strong></div><div class="stat"><span>Assiette angl. enfant</span><strong>${totals.english_child}</strong></div><div class="stat"><span>Repas joueur (offert)</span><strong>${totals.player_meal}</strong></div><div class="stat total"><span>Total repas / montant</span><strong>${totals.meals} · ${eur(totals.amount)}</strong></div></div>
+  <div class="section-title"><h2>Détail des commandes par joueur</h2><span>${booked.length} réservation(s)</span></div>
+  <table><thead><tr><th style="width:16%">Joueur</th><th>Pasta<br>adulte</th><th>Pasta<br>enfant</th><th>Anglaise<br>adulte</th><th>Anglaise<br>enfant</th><th>Joueur<br>offert</th><th>Total<br>repas</th><th>Total €</th><th style="width:12%">Paiement</th></tr></thead><tbody>${detailRows||'<tr><td colspan="9">Aucune réservation enregistrée.</td></tr>'}<tr class="totals-row"><td class="player">TOTAL ÉQUIPE</td><td>${totals.pasta_adult}</td><td>${totals.pasta_child}</td><td>${totals.english_adult}</td><td>${totals.english_child}</td><td>${totals.player_meal}</td><td>${totals.meals}</td><td class="money">${eur(totals.amount)}</td><td>${verified}/${booked.length} vérifiés</td></tr></tbody></table>
+  <div class="notes"><strong>Lecture des paiements :</strong> « Virement annoncé » signifie que le parent a indiqué avoir effectué le paiement. « Vérifié » signifie qu'un coach / trésorier a confirmé la réception du virement.</div>
+  <footer class="footer"><span>Royale Union Sportive Herseautoise - U10</span><span>Document de contrôle interne - Repas Pasta 2026</span></footer></div>
+  <div class="print-actions"><button class="secondary" onclick="window.close()">Fermer</button><button class="primary" onclick="window.print()">Enregistrer / imprimer en PDF</button></div></body></html>`);
+  w.document.close();w.focus();
+}
 
 // ============================================================
 // COMMUNICATION / ÉVÉNEMENTS DU CLUB
@@ -932,7 +1286,10 @@ function lostFoundDashboardHTML(items){
 
 async function renderParentHome(){
   await loadCore();
-  const unclaimedLostFound=await fetchUnclaimedLostFoundItems(4);
+  const [unclaimedLostFound,pastaReservation]=await Promise.all([
+    fetchUnclaimedLostFoundItems(4),
+    getParentPastaReservation()
+  ]);
   const now=new Date();
   const y=now.getFullYear(),m=now.getMonth();
   const monthEvents=state.events.filter(e=>{
@@ -949,6 +1306,8 @@ async function renderParentHome(){
       <p>Retrouvez les prochains rendez-vous et indiquez les présences directement dans l'application.</p></div>
       <button class="btn primary" id="homePresence">Remplir les présences</button>
     </div>
+
+    ${parentPastaReminderHTML(pastaReservation)}
 
     ${lostFoundDashboardHTML(unclaimedLostFound)}
 
@@ -968,6 +1327,7 @@ async function renderParentHome(){
 
   $('#homePresence').onclick=()=>go('attendance');
   $('#homeContact').onclick=()=>go('contact');
+  $$('[data-open-pasta]').forEach(b=>b.onclick=()=>go('pasta'));
   $$('[data-open-lostfound]').forEach(b=>b.onclick=()=>go('lostfound'));
   $$('[data-cal-event]').forEach(b=>b.onclick=()=>{go('attendance')});
 

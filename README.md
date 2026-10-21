@@ -598,3 +598,40 @@ Un nouvel onglet **Communication / événements** permet de :
 
 ### Multi-accès parents
 L'accusé de lecture est enregistré **par accès parent**. Par exemple, si Amadeo possède un accès Maman et un accès Papa, chacun doit voir et confirmer la communication de son côté.
+
+## v44 — Réservations repas Pasta
+**Nouveau SQL obligatoire :** `supabase/UPGRADE_RESERVATIONS_PASTA_V44.sql`
+
+### Données reprises du bon du club
+- repas : samedi 14 novembre 2026 à partir de 18h, salle de l’ICET Herseaux ;
+- Pastas adulte : 15 € ; Pastas enfant : 13 € ;
+- Assiette anglaise adulte : 15 € ; enfant : 13 € ;
+- repas Pasta du joueur affilié : 0 € ;
+- compte : RUS Herseautoise — BE08 2750 5149 4113 ;
+- date officielle du club : jeudi 12 novembre.
+
+### Clôture U10
+Les parents peuvent encoder/modifier jusqu’au **lundi 9 novembre 2026 à 23h59** afin de laisser trois jours aux coachs pour contrôler et rentrer le bon collectif. Les coachs peuvent encore modifier après cette date.
+
+### Parents
+- quantités pour les 4 repas payants + repas joueur offert ;
+- écran récapitulatif avant confirmation ;
+- montant total, IBAN et communication structurée affichés ;
+- bouton **J’ai payé par virement** ;
+- tant que le paiement n’est pas annoncé/vérifié, rappel sur l’accueil ;
+- toute modification de quantité remet le paiement à contrôler.
+
+### Coachs / trésorier
+- tableau de toutes les commandes, y compris joueurs sans réservation ;
+- totaux directement reportables sur le bon collectif ;
+- statut virement annoncé / paiement vérifié ;
+- possibilité de modifier toutes les commandes ;
+- export CSV compatible Excel, par joueur, pour contrôle du trésorier.
+
+## v45 — Repas joueur + export PDF
+Aucun SQL supplémentaire.
+
+- **Repas joueur (offert)** est limité à **0 ou 1** par réservation.
+- L'export coach devient **Exporter le récap PDF**.
+- Le document A4 paysage comprend le logo, les totaux du bon, le détail par joueur, les montants et l'état des paiements.
+- Le document s'ouvre dans une vue dédiée avec un bouton **Enregistrer / imprimer en PDF** utilisant la fonction PDF native du navigateur.

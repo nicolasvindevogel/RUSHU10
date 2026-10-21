@@ -1,14 +1,14 @@
 {
-  "build": "v43",
-  "published_at": "2026-10-18T21:20:00+02:00",
+  "build": "v45",
+  "published_at": "2026-10-21T21:55:00+02:00",
   "roles": {
     "coach": {
-      "version": 17,
-      "message": "Nouveau module Communication / événements pour publier des affiches aux parents."
+      "version": 19,
+      "message": "Le récap Pasta s'exporte maintenant en PDF professionnel et le repas joueur offert est limité à 0 ou 1."
     },
     "parent": {
-      "version": 12,
-      "message": "Les nouvelles affiches du club apparaissent automatiquement à l'ouverture et restent consultables dans Communication / événements."
+      "version": 14,
+      "message": "Le repas joueur offert est maintenant clairement indiqué comme Repas joueur (offert), limité à 0 ou 1."
     }
   }
 }
